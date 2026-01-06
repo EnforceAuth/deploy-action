@@ -144,7 +144,7 @@ export async function pollForCompletion(
           phases.push(phase);
 
           const formattedTime = formatTimestamp(timestamp);
-          core.info(`     ${formattedTime}  ✓ ${phase}`);
+          core.info(`     ${formattedTime}  ✅ ${phase}`);
         }
       }
 

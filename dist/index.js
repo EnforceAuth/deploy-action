@@ -30724,7 +30724,7 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
                     seenPhases.add(phase);
                     phases.push(phase);
                     const formattedTime = formatTimestamp(timestamp);
-                    core.info(`     ${formattedTime}  ✓ ${phase}`);
+                    core.info(`     ${formattedTime}  ✅ ${phase}`);
                 }
             }
             // Check for successful completion
