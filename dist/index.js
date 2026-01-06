@@ -30382,6 +30382,12 @@ async function run() {
             ? Math.round(result.durationMs / 1000)
             : Math.round((Date.now() - startTime) / 1000);
         core.setOutput("duration-seconds", durationSeconds);
+        if (result.bundleVersion) {
+            core.setOutput("bundle-version", result.bundleVersion);
+        }
+        if (result.deploymentUrl) {
+            core.setOutput("deployment-url", result.deploymentUrl);
+        }
         // Fail the action if deployment failed
         if ((0, polling_1.isFailed)(result)) {
             const errorMessage = result.errorMessage || "Deployment failed without error message";
@@ -30668,10 +30674,12 @@ function sleep(ms) {
 }
 /**
  * Generates a unique log ID for deduplication.
+ * Uses timestamp, message content, and metadata to avoid false positives.
  */
 function getLogId(log) {
-    const messagePrefix = log.message.slice(0, 50);
-    return `${log.timestamp}-${messagePrefix}`;
+    const messageHash = log.message.length + log.message.slice(0, 20) + log.message.slice(-20);
+    const metadataId = log.metadata?.action || "";
+    return `${log.timestamp}-${messageHash}-${metadataId}`;
 }
 /**
  * Formats a timestamp for display (HH:MM:SS.mmm).
@@ -30691,7 +30699,6 @@ function formatTimestamp(isoTimestamp) {
  * @param timeoutMinutes - Maximum time to wait in minutes
  * @param config - Optional polling configuration
  * @returns Final deployment result with status, duration, and phases
- * @throws Error if polling times out
  */
 async function pollForCompletion(client, entityId, runId, timeoutMinutes, config = {}) {
     const cfg = { ...DEFAULT_POLLING_CONFIG, ...config };
@@ -30710,9 +30717,13 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
         const elapsed = Date.now() - startTime;
         // Check for timeout
         if (elapsed >= timeoutMs) {
-            throw new Error(`Deployment polling timed out after ${timeoutMinutes} minutes. ` +
+            core.error(`Deployment polling timed out after ${timeoutMinutes} minutes. ` +
                 `Phases completed: ${phases.join(", ") || "none"}. ` +
                 `Check the EnforceAuth console for more details.`);
+            return {
+                status: "timeout",
+                phases,
+            };
         }
         // Fetch logs
         let logs;
@@ -30762,12 +30773,22 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
             // Check for successful completion
             if (metadata.action === "pipeline_complete") {
                 const durationMs = metadata.duration_ms;
+                const bundleVersion = metadata.details?.bundle_version;
+                const deploymentUrl = metadata.details?.deployment_url;
                 core.info("");
                 core.info(`Deployment completed successfully${durationMs ? ` in ${Math.round(durationMs / 1000)}s` : ""}`);
+                if (bundleVersion) {
+                    core.info(`Bundle version: ${bundleVersion}`);
+                }
+                if (deploymentUrl) {
+                    core.info(`Deployment URL: ${deploymentUrl}`);
+                }
                 return {
                     status: "success",
                     durationMs,
                     phases,
+                    bundleVersion,
+                    deploymentUrl,
                 };
             }
             // Check for failure

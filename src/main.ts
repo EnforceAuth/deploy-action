@@ -182,6 +182,13 @@ async function run(): Promise<void> {
       : Math.round((Date.now() - startTime) / 1000);
     core.setOutput("duration-seconds", durationSeconds);
 
+    if (result.bundleVersion) {
+      core.setOutput("bundle-version", result.bundleVersion);
+    }
+    if (result.deploymentUrl) {
+      core.setOutput("deployment-url", result.deploymentUrl);
+    }
+
     // Fail the action if deployment failed
     if (isFailed(result)) {
       const errorMessage =

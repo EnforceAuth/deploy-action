@@ -46,13 +46,16 @@ outputs:
     description: "Deployment run ID"
 
   status:
-    description: "Final deployment status (success, failed, timeout, pending, in_progress)"
+    description: "Final deployment status (success, failed, timeout, pending)"
+
+  duration-seconds:
+    description: "Deployment duration in seconds"
 
   bundle-version:
     description: "Deployed bundle version (on success)"
 
-  duration-seconds:
-    description: "Deployment duration in seconds"
+  deployment-url:
+    description: "S3 URL where the bundle was deployed (on success)"
 
 runs:
   using: "node20"

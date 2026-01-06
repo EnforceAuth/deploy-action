@@ -42,6 +42,8 @@ export interface PollingResult {
   durationMs?: number;
   errorMessage?: string;
   phases: string[];
+  bundleVersion?: string;
+  deploymentUrl?: string;
 }
 
 /**
@@ -53,10 +55,13 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Generates a unique log ID for deduplication.
+ * Uses timestamp, message content, and metadata to avoid false positives.
  */
 function getLogId(log: LogEntry): string {
-  const messagePrefix = log.message.slice(0, 50);
-  return `${log.timestamp}-${messagePrefix}`;
+  const messageHash =
+    log.message.length + log.message.slice(0, 20) + log.message.slice(-20);
+  const metadataId = log.metadata?.action || "";
+  return `${log.timestamp}-${messageHash}-${metadataId}`;
 }
 
 /**
@@ -78,7 +83,6 @@ function formatTimestamp(isoTimestamp: string): string {
  * @param timeoutMinutes - Maximum time to wait in minutes
  * @param config - Optional polling configuration
  * @returns Final deployment result with status, duration, and phases
- * @throws Error if polling times out
  */
 export async function pollForCompletion(
   client: EnforceAuthClient,
@@ -111,11 +115,15 @@ export async function pollForCompletion(
 
     // Check for timeout
     if (elapsed >= timeoutMs) {
-      throw new Error(
+      core.error(
         `Deployment polling timed out after ${timeoutMinutes} minutes. ` +
           `Phases completed: ${phases.join(", ") || "none"}. ` +
           `Check the EnforceAuth console for more details.`,
       );
+      return {
+        status: "timeout",
+        phases,
+      };
     }
 
     // Fetch logs
@@ -173,15 +181,30 @@ export async function pollForCompletion(
       // Check for successful completion
       if (metadata.action === "pipeline_complete") {
         const durationMs = metadata.duration_ms;
+        const bundleVersion = metadata.details?.bundle_version as
+          | string
+          | undefined;
+        const deploymentUrl = metadata.details?.deployment_url as
+          | string
+          | undefined;
+
         core.info("");
         core.info(
           `Deployment completed successfully${durationMs ? ` in ${Math.round(durationMs / 1000)}s` : ""}`,
         );
+        if (bundleVersion) {
+          core.info(`Bundle version: ${bundleVersion}`);
+        }
+        if (deploymentUrl) {
+          core.info(`Deployment URL: ${deploymentUrl}`);
+        }
 
         return {
           status: "success",
           durationMs,
           phases,
+          bundleVersion,
+          deploymentUrl,
         };
       }
 

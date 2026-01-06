@@ -28,6 +28,8 @@ export interface PollingResult {
     durationMs?: number;
     errorMessage?: string;
     phases: string[];
+    bundleVersion?: string;
+    deploymentUrl?: string;
 }
 /**
  * Polls for deployment completion using log-based polling.
@@ -41,7 +43,6 @@ export interface PollingResult {
  * @param timeoutMinutes - Maximum time to wait in minutes
  * @param config - Optional polling configuration
  * @returns Final deployment result with status, duration, and phases
- * @throws Error if polling times out
  */
 export declare function pollForCompletion(client: EnforceAuthClient, entityId: string, runId: string, timeoutMinutes: number, config?: PollingConfig): Promise<PollingResult>;
 /**
