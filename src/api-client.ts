@@ -236,9 +236,12 @@ export class EnforceAuthClient {
   ): Promise<LogEntry[]> {
     core.info(`Fetching policy logs for entity: ${entityId}, run: ${runId}`);
 
+    // Use 10 minute lookback for faster CloudWatch queries
+    const startTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+
     const response = await this.request<{ logs: LogEntry[] }>(
       "GET",
-      `/v1/entities/${entityId}/policy-logs?run_id=${runId}&limit=${limit}`,
+      `/v1/entities/${entityId}/policy-logs?run_id=${runId}&limit=${limit}&start_time=${startTime}`,
     );
 
     core.info(
