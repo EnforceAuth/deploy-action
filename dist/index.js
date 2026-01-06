@@ -30355,61 +30355,19 @@ async function run() {
             core.setOutput("duration-seconds", Math.round((Date.now() - startTime) / 1000));
             return;
         }
-        // Poll for completion
-        const result = await (0, polling_1.pollForCompletion)(client, runId, inputs.timeoutMinutes);
+        // Poll for completion using log-based polling
+        const result = await (0, polling_1.pollForCompletion)(client, inputs.entityId, runId, inputs.timeoutMinutes);
         // Set outputs
-        core.setOutput("status", result.status.status);
-        core.setOutput("duration-seconds", result.durationSeconds);
-        // Set bundle-version if available (from metadata on success)
-        if (result.status.metadata &&
-            typeof result.status.metadata === "object" &&
-            "bundle_version" in result.status.metadata) {
-            core.setOutput("bundle-version", result.status.metadata.bundle_version);
-        }
-        // Fetch and display pipeline logs
-        // CloudWatch Logs has eventual consistency, so we retry a few times
-        core.info("");
-        core.info("Fetching pipeline logs...");
-        try {
-            const entityId = result.status.entity_id || inputs.entityId;
-            let logs = await client.getPolicyLogs(entityId, runId);
-            // Retry up to 15 times with 2s delay (~30s total) if no logs found (CloudWatch eventual consistency)
-            let retries = 0;
-            while (logs.length === 0 && retries < 15) {
-                retries++;
-                core.info(`Waiting for logs to be available (attempt ${retries + 1}/16)...`);
-                await new Promise((resolve) => setTimeout(resolve, 2000));
-                logs = await client.getPolicyLogs(entityId, runId);
-            }
-            if (logs.length > 0) {
-                core.info("");
-                core.info("Pipeline Logs:");
-                core.info("--------------");
-                for (const log of logs) {
-                    const timestamp = log.timestamp.slice(11, 19); // HH:MM:SS
-                    const level = log.level.toUpperCase().padEnd(5);
-                    core.info(`[${timestamp}] ${level} ${log.message}`);
-                }
-                core.info("--------------");
-            }
-            else {
-                core.info("No logs available for this deployment");
-            }
-        }
-        catch (error) {
-            // Log fetching is best-effort, don't fail the action
-            core.warning(`Failed to fetch logs: ${error instanceof Error ? error.message : error}`);
-        }
+        core.setOutput("status", result.status);
+        const durationSeconds = result.durationMs
+            ? Math.round(result.durationMs / 1000)
+            : Math.round((Date.now() - startTime) / 1000);
+        core.setOutput("duration-seconds", durationSeconds);
         // Fail the action if deployment failed
-        if ((0, polling_1.isFailed)(result.status)) {
-            const errorMessage = result.status.error_message ||
-                "Deployment failed without error message";
+        if ((0, polling_1.isFailed)(result)) {
+            const errorMessage = result.errorMessage || "Deployment failed without error message";
             core.setFailed(`Deployment failed: ${errorMessage}`);
             return;
-        }
-        // Log success
-        if ((0, polling_1.isSuccessful)(result.status)) {
-            core.info("Deployment completed successfully!");
         }
     }
     catch (error) {
@@ -30632,10 +30590,10 @@ async function authenticate(apiUrl, entityId) {
 "use strict";
 
 /**
- * Deployment Status Polling (EA-132)
+ * Log-Based Deployment Polling
  *
- * Polls the EnforceAuth API for deployment status until completion or timeout.
- * Uses exponential backoff with jitter to avoid overwhelming the API.
+ * Polls the EnforceAuth API policy logs for deployment status until completion or timeout.
+ * Detects phase transitions and completion/failure from log metadata actions.
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -30676,152 +30634,135 @@ exports.isSuccessful = isSuccessful;
 exports.isFailed = isFailed;
 const core = __importStar(__nccwpck_require__(7484));
 /**
- * Terminal deployment statuses (no more polling needed)
- */
-const TERMINAL_STATUSES = ['success', 'failed', 'timeout'];
-/**
  * Default polling configuration
  */
 const DEFAULT_POLLING_CONFIG = {
-    initialDelayMs: 2000, // 2 seconds
-    maxDelayMs: 30000, // 30 seconds
-    backoffMultiplier: 1.5,
-    jitterPercent: 0.2, // +/- 20%
+    pollDelayMs: 2000, // 2 seconds
+    logLimit: 200,
 };
 /**
- * Calculates the next delay with exponential backoff and jitter.
- *
- * @param currentDelay - Current delay in milliseconds
- * @param config - Polling configuration
- * @returns Next delay in milliseconds
- */
-function calculateNextDelay(currentDelay, config) {
-    // Apply backoff
-    let nextDelay = currentDelay * config.backoffMultiplier;
-    // Cap at maximum
-    nextDelay = Math.min(nextDelay, config.maxDelayMs);
-    // Apply jitter (+/- jitterPercent)
-    const jitterRange = nextDelay * config.jitterPercent;
-    const jitter = (Math.random() - 0.5) * 2 * jitterRange;
-    nextDelay = nextDelay + jitter;
-    return Math.round(nextDelay);
-}
-/**
  * Sleeps for the specified duration.
- *
- * @param ms - Duration in milliseconds
  */
 function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 /**
- * Formats a status for logging.
- *
- * @param status - Deployment status
- * @returns Formatted status string
+ * Generates a unique log ID for deduplication.
  */
-function formatStatus(status) {
-    let message = `Status: ${status.status}`;
-    if (status.current_phase) {
-        message += ` (phase: ${status.current_phase})`;
-    }
-    if (status.error_message) {
-        message += ` - Error: ${status.error_message}`;
-    }
-    return message;
+function getLogId(log) {
+    const messagePrefix = log.message.slice(0, 50);
+    return `${log.timestamp}-${messagePrefix}`;
 }
 /**
- * Polls for deployment completion.
+ * Formats a timestamp for display (HH:MM:SS.mmm).
+ */
+function formatTimestamp(isoTimestamp) {
+    return isoTimestamp.slice(11, 23); // Extract HH:MM:SS.mmm
+}
+/**
+ * Polls for deployment completion using log-based polling.
  *
- * Uses exponential backoff with jitter to avoid overwhelming the API.
- * Logs status updates and provides progress information.
+ * Fetches policy logs and watches for phase transitions and completion events.
+ * Outputs phase changes in real-time as they are detected.
  *
  * @param client - EnforceAuth API client
+ * @param entityId - Entity ID for log fetching
  * @param runId - Deployment run ID to poll
  * @param timeoutMinutes - Maximum time to wait in minutes
  * @param config - Optional polling configuration
- * @returns Final deployment status and duration
+ * @returns Final deployment result with status, duration, and phases
  * @throws Error if polling times out
  */
-async function pollForCompletion(client, runId, timeoutMinutes, config = DEFAULT_POLLING_CONFIG) {
+async function pollForCompletion(client, entityId, runId, timeoutMinutes, config = DEFAULT_POLLING_CONFIG) {
     const startTime = Date.now();
     const timeoutMs = timeoutMinutes * 60 * 1000;
-    let currentDelay = config.initialDelayMs;
-    let lastStatus = null;
-    let lastPhase = null;
-    let pollCount = 0;
+    const seenLogIds = new Set();
+    const seenPhases = new Set();
+    const phases = [];
     core.info(`Polling for deployment completion (timeout: ${timeoutMinutes} minutes)...`);
+    core.info("");
     while (true) {
-        pollCount++;
         const elapsed = Date.now() - startTime;
         // Check for timeout
         if (elapsed >= timeoutMs) {
             throw new Error(`Deployment polling timed out after ${timeoutMinutes} minutes. ` +
-                `Last status: ${lastStatus || 'unknown'}. ` +
+                `Phases completed: ${phases.join(", ") || "none"}. ` +
                 `Check the EnforceAuth console for more details.`);
         }
-        // Fetch current status
-        let status;
+        // Fetch logs
+        let logs;
         try {
-            status = await client.getDeploymentStatus(runId);
+            logs = await client.getPolicyLogs(entityId, runId, config.logLimit);
         }
         catch (error) {
-            // Log error but continue polling (transient errors happen)
             const message = error instanceof Error ? error.message : String(error);
-            core.warning(`Failed to fetch deployment status: ${message}. Retrying...`);
-            await sleep(currentDelay);
-            currentDelay = calculateNextDelay(currentDelay, config);
+            core.warning(`Failed to fetch logs: ${message}. Retrying...`);
+            await sleep(config.pollDelayMs);
             continue;
         }
-        // Log status changes
-        if (status.status !== lastStatus || status.current_phase !== lastPhase) {
-            core.info(formatStatus(status));
-            lastStatus = status.status;
-            lastPhase = status.current_phase;
-        }
-        else {
-            core.debug(`Poll #${pollCount}: ${formatStatus(status)}`);
-        }
-        // Check for terminal status
-        if (TERMINAL_STATUSES.includes(status.status)) {
-            const durationSeconds = Math.round((Date.now() - startTime) / 1000);
-            if (status.status === 'success') {
-                core.info(`Deployment completed successfully in ${durationSeconds} seconds`);
+        // Process each log entry
+        for (const log of logs) {
+            const logId = getLogId(log);
+            // Skip already-seen logs
+            if (seenLogIds.has(logId)) {
+                continue;
             }
-            else if (status.status === 'failed') {
-                core.error(`Deployment failed: ${status.error_message || 'Unknown error'}` +
-                    (status.error_phase ? ` (phase: ${status.error_phase})` : ''));
+            seenLogIds.add(logId);
+            const metadata = log.metadata;
+            if (!metadata?.action) {
+                continue;
             }
-            else if (status.status === 'timeout') {
-                core.error('Deployment timed out on the server side');
+            // Handle phase transitions
+            if (metadata.action === "report_phase_change_success") {
+                const phase = metadata.details?.phase;
+                const timestamp = metadata.timestamp || log.timestamp;
+                if (phase && !seenPhases.has(phase)) {
+                    seenPhases.add(phase);
+                    phases.push(phase);
+                    const formattedTime = formatTimestamp(timestamp);
+                    core.info(`     ${formattedTime}  ✓ ${phase}`);
+                }
             }
-            return {
-                status,
-                durationSeconds,
-            };
+            // Check for successful completion
+            if (metadata.action === "pipeline_complete") {
+                const durationMs = metadata.duration_ms;
+                core.info("");
+                core.info(`Deployment completed successfully${durationMs ? ` in ${Math.round(durationMs / 1000)}s` : ""}`);
+                return {
+                    status: "success",
+                    durationMs,
+                    phases,
+                };
+            }
+            // Check for failure
+            if (metadata.action === "pipeline_failed" ||
+                metadata.action === "pipeline_error") {
+                const errorMessage = metadata.message || "Deployment failed without error message";
+                core.info("");
+                core.error(`Deployment failed: ${errorMessage}`);
+                return {
+                    status: "failed",
+                    errorMessage,
+                    phases,
+                };
+            }
         }
-        // Wait before next poll
-        await sleep(currentDelay);
-        currentDelay = calculateNextDelay(currentDelay, config);
+        // Print progress indicator and wait before next poll
+        process.stdout.write(".");
+        await sleep(config.pollDelayMs);
     }
 }
 /**
- * Determines if a deployment status represents a successful completion.
- *
- * @param status - Deployment status
- * @returns True if the deployment was successful
+ * Determines if a polling result represents a successful completion.
  */
-function isSuccessful(status) {
-    return status.status === 'success';
+function isSuccessful(result) {
+    return result.status === "success";
 }
 /**
- * Determines if a deployment status represents a failure.
- *
- * @param status - Deployment status
- * @returns True if the deployment failed
+ * Determines if a polling result represents a failure.
  */
-function isFailed(status) {
-    return status.status === 'failed' || status.status === 'timeout';
+function isFailed(result) {
+    return result.status === "failed" || result.status === "timeout";
 }
 
 

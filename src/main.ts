@@ -17,7 +17,7 @@ import * as github from "@actions/github";
 import { authenticate } from "./oidc";
 import { EnforceAuthClient } from "./api-client";
 import { generateIdempotencyKey, getIdempotencyContext } from "./idempotency";
-import { pollForCompletion, isSuccessful, isFailed } from "./polling";
+import { pollForCompletion, isFailed } from "./polling";
 
 /**
  * Action inputs from action.yml
@@ -138,77 +138,27 @@ async function run(): Promise<void> {
       return;
     }
 
-    // Poll for completion
+    // Poll for completion using log-based polling
     const result = await pollForCompletion(
       client,
+      inputs.entityId,
       runId,
       inputs.timeoutMinutes,
     );
 
     // Set outputs
-    core.setOutput("status", result.status.status);
-    core.setOutput("duration-seconds", result.durationSeconds);
-
-    // Set bundle-version if available (from metadata on success)
-    if (
-      result.status.metadata &&
-      typeof result.status.metadata === "object" &&
-      "bundle_version" in result.status.metadata
-    ) {
-      core.setOutput("bundle-version", result.status.metadata.bundle_version);
-    }
-
-    // Fetch and display pipeline logs
-    // CloudWatch Logs has eventual consistency, so we retry a few times
-    core.info("");
-    core.info("Fetching pipeline logs...");
-    try {
-      const entityId = result.status.entity_id || inputs.entityId;
-      let logs = await client.getPolicyLogs(entityId, runId);
-
-      // Retry up to 15 times with 2s delay (~30s total) if no logs found (CloudWatch eventual consistency)
-      let retries = 0;
-      while (logs.length === 0 && retries < 15) {
-        retries++;
-        core.info(
-          `Waiting for logs to be available (attempt ${retries + 1}/16)...`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        logs = await client.getPolicyLogs(entityId, runId);
-      }
-
-      if (logs.length > 0) {
-        core.info("");
-        core.info("Pipeline Logs:");
-        core.info("--------------");
-        for (const log of logs) {
-          const timestamp = log.timestamp.slice(11, 19); // HH:MM:SS
-          const level = log.level.toUpperCase().padEnd(5);
-          core.info(`[${timestamp}] ${level} ${log.message}`);
-        }
-        core.info("--------------");
-      } else {
-        core.info("No logs available for this deployment");
-      }
-    } catch (error) {
-      // Log fetching is best-effort, don't fail the action
-      core.warning(
-        `Failed to fetch logs: ${error instanceof Error ? error.message : error}`,
-      );
-    }
+    core.setOutput("status", result.status);
+    const durationSeconds = result.durationMs
+      ? Math.round(result.durationMs / 1000)
+      : Math.round((Date.now() - startTime) / 1000);
+    core.setOutput("duration-seconds", durationSeconds);
 
     // Fail the action if deployment failed
-    if (isFailed(result.status)) {
+    if (isFailed(result)) {
       const errorMessage =
-        result.status.error_message ||
-        "Deployment failed without error message";
+        result.errorMessage || "Deployment failed without error message";
       core.setFailed(`Deployment failed: ${errorMessage}`);
       return;
-    }
-
-    // Log success
-    if (isSuccessful(result.status)) {
-      core.info("Deployment completed successfully!");
     }
   } catch (error) {
     // Handle errors
