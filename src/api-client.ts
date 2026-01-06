@@ -234,13 +234,14 @@ export class EnforceAuthClient {
     runId: string,
     limit = 100,
   ): Promise<LogEntry[]> {
-    core.debug(`Fetching policy logs for run: ${runId}`);
+    core.info(`Fetching policy logs for entity: ${entityId}, run: ${runId}`);
 
     const response = await this.request<{ logs: LogEntry[] }>(
       "GET",
       `/v1/entities/${entityId}/policy-logs?run_id=${runId}&limit=${limit}`,
     );
 
+    core.debug(`Policy logs response: ${JSON.stringify(response)}`);
     return response.logs ?? [];
   }
 }
