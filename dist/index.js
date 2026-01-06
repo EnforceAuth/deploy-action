@@ -30253,22 +30253,17 @@ const polling_1 = __nccwpck_require__(2692);
  * Parses and validates action inputs.
  */
 function getInputs() {
-    const ciEntityId = core.getInput('ci-entity-id', { required: true });
-    const targetEntityId = core.getInput('target-entity-id') || ciEntityId; // Default to ci-entity-id for self-deploy
+    const entityId = core.getInput('entity-id', { required: true });
     const apiUrl = core.getInput('api-url') || 'https://api.enforceauth.com';
     const waitForCompletion = core.getBooleanInput('wait-for-completion');
     const timeoutMinutes = parseInt(core.getInput('timeout-minutes') || '10', 10);
     const dryRun = core.getBooleanInput('dry-run');
     // Validate inputs
-    if (!ciEntityId) {
-        throw new Error('ci-entity-id is required');
-    }
     if (timeoutMinutes < 1 || timeoutMinutes > 60) {
         throw new Error('timeout-minutes must be between 1 and 60');
     }
     return {
-        ciEntityId,
-        targetEntityId,
+        entityId,
         apiUrl,
         waitForCompletion,
         timeoutMinutes,
@@ -30282,8 +30277,7 @@ function logContext(inputs) {
     const context = github.context;
     core.info('EnforceAuth Deploy Action');
     core.info('=========================');
-    core.info(`CI Entity: ${inputs.ciEntityId}`);
-    core.info(`Target Entity: ${inputs.targetEntityId}`);
+    core.info(`Entity: ${inputs.entityId}`);
     core.info(`API URL: ${inputs.apiUrl}`);
     core.info(`Wait for completion: ${inputs.waitForCompletion}`);
     core.info(`Timeout: ${inputs.timeoutMinutes} minutes`);
@@ -30309,13 +30303,13 @@ async function run() {
         const inputs = getInputs();
         // Log context for debugging
         logContext(inputs);
-        // Generate idempotency key (based on target entity, not CI entity)
-        const idempotencyKey = (0, idempotency_1.generateIdempotencyKey)(inputs.targetEntityId);
-        const idempotencyContext = (0, idempotency_1.getIdempotencyContext)(inputs.targetEntityId);
+        // Generate idempotency key
+        const idempotencyKey = (0, idempotency_1.generateIdempotencyKey)(inputs.entityId);
+        const idempotencyContext = (0, idempotency_1.getIdempotencyContext)(inputs.entityId);
         core.debug(`Idempotency key: ${idempotencyKey}`);
         core.debug(`Idempotency context: ${JSON.stringify(idempotencyContext)}`);
-        // Authenticate via OIDC using CI entity
-        const accessToken = await (0, oidc_1.authenticate)(inputs.apiUrl, inputs.ciEntityId);
+        // Authenticate via OIDC
+        const accessToken = await (0, oidc_1.authenticate)(inputs.apiUrl, inputs.entityId);
         // Create API client
         const client = new api_client_1.EnforceAuthClient(inputs.apiUrl, accessToken);
         // Handle dry-run mode
@@ -30326,8 +30320,8 @@ async function run() {
             core.setOutput('duration-seconds', Math.round((Date.now() - startTime) / 1000));
             return;
         }
-        // Trigger deployment on target entity
-        const runId = await client.triggerDeployment(inputs.targetEntityId, idempotencyKey);
+        // Trigger deployment
+        const runId = await client.triggerDeployment(inputs.entityId, idempotencyKey);
         // Set run-id output immediately
         core.setOutput('run-id', runId);
         // If not waiting for completion, we're done

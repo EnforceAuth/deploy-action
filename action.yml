@@ -7,13 +7,9 @@ branding:
   color: 'blue'
 
 inputs:
-  ci-entity-id:
-    description: 'CI entity ID for authentication (from EnforceAuth console)'
+  entity-id:
+    description: 'Entity ID for authentication and deployment. The CI authenticates as this entity and can deploy policies to it or any of its descendants.'
     required: true
-
-  target-entity-id:
-    description: 'Entity ID to deploy policies to (defaults to ci-entity-id if not specified)'
-    required: false
 
   api-url:
     description: 'EnforceAuth API URL'
