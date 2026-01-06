@@ -9,21 +9,29 @@ import * as core from "@actions/core";
 import { EnforceAuthClient, LogEntry } from "./api-client";
 
 /**
+ * Log verbosity levels
+ */
+export type LogVerbosity = "none" | "quiet" | "normal" | "verbose";
+
+/**
  * Polling configuration
  */
-interface PollingConfig {
+export interface PollingConfig {
   /** Delay between polls in milliseconds */
-  pollDelayMs: number;
+  pollDelayMs?: number;
   /** Maximum number of logs to fetch per poll */
-  logLimit: number;
+  logLimit?: number;
+  /** Log verbosity level */
+  logVerbosity?: LogVerbosity;
 }
 
 /**
  * Default polling configuration
  */
-const DEFAULT_POLLING_CONFIG: PollingConfig = {
+const DEFAULT_POLLING_CONFIG: Required<PollingConfig> = {
   pollDelayMs: 2000, // 2 seconds
   logLimit: 200,
+  logVerbosity: "normal",
 };
 
 /**
@@ -77,14 +85,21 @@ export async function pollForCompletion(
   entityId: string,
   runId: string,
   timeoutMinutes: number,
-  config: PollingConfig = DEFAULT_POLLING_CONFIG,
+  config: PollingConfig = {},
 ): Promise<PollingResult> {
+  const cfg = { ...DEFAULT_POLLING_CONFIG, ...config };
   const startTime = Date.now();
   const timeoutMs = timeoutMinutes * 60 * 1000;
 
   const seenLogIds = new Set<string>();
   const seenPhases = new Set<string>();
   const phases: string[] = [];
+
+  // Verbosity helpers
+  const showPhases = cfg.logVerbosity !== "none";
+  const showLogs =
+    cfg.logVerbosity === "normal" || cfg.logVerbosity === "verbose";
+  const showDebugLogs = cfg.logVerbosity === "verbose";
 
   core.info(
     `Polling for deployment completion (timeout: ${timeoutMinutes} minutes)...`,
@@ -106,11 +121,11 @@ export async function pollForCompletion(
     // Fetch logs
     let logs: LogEntry[];
     try {
-      logs = await client.getPolicyLogs(entityId, runId, config.logLimit);
+      logs = await client.getPolicyLogs(entityId, runId, cfg.logLimit);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       core.warning(`Failed to fetch logs: ${message}. Retrying...`);
-      await sleep(config.pollDelayMs);
+      await sleep(cfg.pollDelayMs);
       continue;
     }
 
@@ -124,10 +139,15 @@ export async function pollForCompletion(
       }
       seenLogIds.add(logId);
 
-      // Output log message in real-time
-      const logTime = formatTimestamp(log.timestamp); // HH:MM:SS.mmm
-      const level = log.level.toUpperCase().padEnd(5);
-      core.info(`[${logTime}] ${level} ${log.message}`);
+      // Output log message in real-time based on verbosity
+      if (showLogs) {
+        const isDebugLog = log.level.toLowerCase() === "debug";
+        if (!isDebugLog || showDebugLogs) {
+          const logTime = formatTimestamp(log.timestamp);
+          const level = log.level.toUpperCase().padEnd(5);
+          core.info(`[${logTime}] ${level} ${log.message}`);
+        }
+      }
 
       const metadata = log.metadata;
       if (!metadata?.action) {
@@ -143,8 +163,10 @@ export async function pollForCompletion(
           seenPhases.add(phase);
           phases.push(phase);
 
-          const formattedTime = formatTimestamp(timestamp);
-          core.info(`[${formattedTime}] PHASE  ✅ ${phase}`);
+          if (showPhases) {
+            const formattedTime = formatTimestamp(timestamp);
+            core.info(`[${formattedTime}] PHASE  ✅ ${phase}`);
+          }
         }
       }
 
@@ -170,9 +192,11 @@ export async function pollForCompletion(
       ) {
         const errorMessage =
           metadata.message || "Deployment failed without error message";
-        const failTime = formatTimestamp(metadata.timestamp || log.timestamp);
-        core.info(`[${failTime}] PHASE  ❌ failed`);
-        core.info("");
+        if (showPhases) {
+          const failTime = formatTimestamp(metadata.timestamp || log.timestamp);
+          core.info(`[${failTime}] PHASE  ❌ failed`);
+          core.info("");
+        }
         core.error(`Deployment failed: ${errorMessage}`);
 
         return {
@@ -184,7 +208,7 @@ export async function pollForCompletion(
     }
 
     // Wait before next poll
-    await sleep(config.pollDelayMs);
+    await sleep(cfg.pollDelayMs);
   }
 }
 

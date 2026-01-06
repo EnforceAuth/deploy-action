@@ -30282,9 +30282,23 @@ function getInputs() {
     const waitForCompletion = core.getBooleanInput("wait-for-completion");
     const timeoutMinutes = parseInt(core.getInput("timeout-minutes") || "10", 10);
     const dryRun = core.getBooleanInput("dry-run");
+    const pollIntervalSeconds = parseInt(core.getInput("poll-interval-seconds") || "2", 10);
+    const logVerbosityInput = core.getInput("log-verbosity") || "normal";
     // Validate inputs
     if (timeoutMinutes < 1 || timeoutMinutes > 60) {
         throw new Error("timeout-minutes must be between 1 and 60");
+    }
+    if (pollIntervalSeconds < 1 || pollIntervalSeconds > 30) {
+        throw new Error("poll-interval-seconds must be between 1 and 30");
+    }
+    const validVerbosities = [
+        "none",
+        "quiet",
+        "normal",
+        "verbose",
+    ];
+    if (!validVerbosities.includes(logVerbosityInput)) {
+        throw new Error(`log-verbosity must be one of: ${validVerbosities.join(", ")}`);
     }
     return {
         entityId,
@@ -30292,6 +30306,8 @@ function getInputs() {
         waitForCompletion,
         timeoutMinutes,
         dryRun,
+        pollIntervalSeconds,
+        logVerbosity: logVerbosityInput,
     };
 }
 /**
@@ -30356,7 +30372,10 @@ async function run() {
             return;
         }
         // Poll for completion using log-based polling
-        const result = await (0, polling_1.pollForCompletion)(client, inputs.entityId, runId, inputs.timeoutMinutes);
+        const result = await (0, polling_1.pollForCompletion)(client, inputs.entityId, runId, inputs.timeoutMinutes, {
+            pollDelayMs: inputs.pollIntervalSeconds * 1000,
+            logVerbosity: inputs.logVerbosity,
+        });
         // Set outputs
         core.setOutput("status", result.status);
         const durationSeconds = result.durationMs
@@ -30639,6 +30658,7 @@ const core = __importStar(__nccwpck_require__(7484));
 const DEFAULT_POLLING_CONFIG = {
     pollDelayMs: 2000, // 2 seconds
     logLimit: 200,
+    logVerbosity: "normal",
 };
 /**
  * Sleeps for the specified duration.
@@ -30673,12 +30693,17 @@ function formatTimestamp(isoTimestamp) {
  * @returns Final deployment result with status, duration, and phases
  * @throws Error if polling times out
  */
-async function pollForCompletion(client, entityId, runId, timeoutMinutes, config = DEFAULT_POLLING_CONFIG) {
+async function pollForCompletion(client, entityId, runId, timeoutMinutes, config = {}) {
+    const cfg = { ...DEFAULT_POLLING_CONFIG, ...config };
     const startTime = Date.now();
     const timeoutMs = timeoutMinutes * 60 * 1000;
     const seenLogIds = new Set();
     const seenPhases = new Set();
     const phases = [];
+    // Verbosity helpers
+    const showPhases = cfg.logVerbosity !== "none";
+    const showLogs = cfg.logVerbosity === "normal" || cfg.logVerbosity === "verbose";
+    const showDebugLogs = cfg.logVerbosity === "verbose";
     core.info(`Polling for deployment completion (timeout: ${timeoutMinutes} minutes)...`);
     core.info("");
     while (true) {
@@ -30692,12 +30717,12 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
         // Fetch logs
         let logs;
         try {
-            logs = await client.getPolicyLogs(entityId, runId, config.logLimit);
+            logs = await client.getPolicyLogs(entityId, runId, cfg.logLimit);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             core.warning(`Failed to fetch logs: ${message}. Retrying...`);
-            await sleep(config.pollDelayMs);
+            await sleep(cfg.pollDelayMs);
             continue;
         }
         // Process each log entry
@@ -30708,10 +30733,15 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
                 continue;
             }
             seenLogIds.add(logId);
-            // Output log message in real-time
-            const logTime = formatTimestamp(log.timestamp); // HH:MM:SS.mmm
-            const level = log.level.toUpperCase().padEnd(5);
-            core.info(`[${logTime}] ${level} ${log.message}`);
+            // Output log message in real-time based on verbosity
+            if (showLogs) {
+                const isDebugLog = log.level.toLowerCase() === "debug";
+                if (!isDebugLog || showDebugLogs) {
+                    const logTime = formatTimestamp(log.timestamp);
+                    const level = log.level.toUpperCase().padEnd(5);
+                    core.info(`[${logTime}] ${level} ${log.message}`);
+                }
+            }
             const metadata = log.metadata;
             if (!metadata?.action) {
                 continue;
@@ -30723,8 +30753,10 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
                 if (phase && !seenPhases.has(phase)) {
                     seenPhases.add(phase);
                     phases.push(phase);
-                    const formattedTime = formatTimestamp(timestamp);
-                    core.info(`[${formattedTime}] PHASE  ✅ ${phase}`);
+                    if (showPhases) {
+                        const formattedTime = formatTimestamp(timestamp);
+                        core.info(`[${formattedTime}] PHASE  ✅ ${phase}`);
+                    }
                 }
             }
             // Check for successful completion
@@ -30742,9 +30774,11 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
             if (metadata.action === "pipeline_failed" ||
                 metadata.action === "pipeline_error") {
                 const errorMessage = metadata.message || "Deployment failed without error message";
-                const failTime = formatTimestamp(metadata.timestamp || log.timestamp);
-                core.info(`[${failTime}] PHASE  ❌ failed`);
-                core.info("");
+                if (showPhases) {
+                    const failTime = formatTimestamp(metadata.timestamp || log.timestamp);
+                    core.info(`[${failTime}] PHASE  ❌ failed`);
+                    core.info("");
+                }
                 core.error(`Deployment failed: ${errorMessage}`);
                 return {
                     status: "failed",
@@ -30754,7 +30788,7 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
             }
         }
         // Wait before next poll
-        await sleep(config.pollDelayMs);
+        await sleep(cfg.pollDelayMs);
     }
 }
 /**

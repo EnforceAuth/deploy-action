@@ -6,13 +6,19 @@
  */
 import { EnforceAuthClient } from "./api-client";
 /**
+ * Log verbosity levels
+ */
+export type LogVerbosity = "none" | "quiet" | "normal" | "verbose";
+/**
  * Polling configuration
  */
-interface PollingConfig {
+export interface PollingConfig {
     /** Delay between polls in milliseconds */
-    pollDelayMs: number;
+    pollDelayMs?: number;
     /** Maximum number of logs to fetch per poll */
-    logLimit: number;
+    logLimit?: number;
+    /** Log verbosity level */
+    logVerbosity?: LogVerbosity;
 }
 /**
  * Result of polling for deployment completion
@@ -46,4 +52,3 @@ export declare function isSuccessful(result: PollingResult): boolean;
  * Determines if a polling result represents a failure.
  */
 export declare function isFailed(result: PollingResult): boolean;
-export {};

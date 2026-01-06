@@ -17,7 +17,7 @@ import * as github from "@actions/github";
 import { authenticate } from "./oidc";
 import { EnforceAuthClient } from "./api-client";
 import { generateIdempotencyKey, getIdempotencyContext } from "./idempotency";
-import { pollForCompletion, isFailed } from "./polling";
+import { pollForCompletion, isFailed, LogVerbosity } from "./polling";
 
 /**
  * Action inputs from action.yml
@@ -28,6 +28,8 @@ interface ActionInputs {
   waitForCompletion: boolean;
   timeoutMinutes: number;
   dryRun: boolean;
+  pollIntervalSeconds: number;
+  logVerbosity: LogVerbosity;
 }
 
 /**
@@ -39,10 +41,31 @@ function getInputs(): ActionInputs {
   const waitForCompletion = core.getBooleanInput("wait-for-completion");
   const timeoutMinutes = parseInt(core.getInput("timeout-minutes") || "10", 10);
   const dryRun = core.getBooleanInput("dry-run");
+  const pollIntervalSeconds = parseInt(
+    core.getInput("poll-interval-seconds") || "2",
+    10,
+  );
+  const logVerbosityInput = core.getInput("log-verbosity") || "normal";
 
   // Validate inputs
   if (timeoutMinutes < 1 || timeoutMinutes > 60) {
     throw new Error("timeout-minutes must be between 1 and 60");
+  }
+
+  if (pollIntervalSeconds < 1 || pollIntervalSeconds > 30) {
+    throw new Error("poll-interval-seconds must be between 1 and 30");
+  }
+
+  const validVerbosities: LogVerbosity[] = [
+    "none",
+    "quiet",
+    "normal",
+    "verbose",
+  ];
+  if (!validVerbosities.includes(logVerbosityInput as LogVerbosity)) {
+    throw new Error(
+      `log-verbosity must be one of: ${validVerbosities.join(", ")}`,
+    );
   }
 
   return {
@@ -51,6 +74,8 @@ function getInputs(): ActionInputs {
     waitForCompletion,
     timeoutMinutes,
     dryRun,
+    pollIntervalSeconds,
+    logVerbosity: logVerbosityInput as LogVerbosity,
   };
 }
 
@@ -144,6 +169,10 @@ async function run(): Promise<void> {
       inputs.entityId,
       runId,
       inputs.timeoutMinutes,
+      {
+        pollDelayMs: inputs.pollIntervalSeconds * 1000,
+        logVerbosity: inputs.logVerbosity,
+      },
     );
 
     // Set outputs
