@@ -159,8 +159,12 @@ async function run(): Promise<void> {
     }
 
     // Fetch and display pipeline logs
+    core.info("");
+    core.info("Fetching pipeline logs...");
     try {
-      const logs = await client.getPolicyLogs(inputs.entityId, runId);
+      // Use entity_id from the deployment status (more reliable than input)
+      const entityId = result.status.entity_id || inputs.entityId;
+      const logs = await client.getPolicyLogs(entityId, runId);
       if (logs.length > 0) {
         core.info("");
         core.info("Pipeline Logs:");
@@ -171,10 +175,12 @@ async function run(): Promise<void> {
           core.info(`[${timestamp}] ${level} ${log.message}`);
         }
         core.info("--------------");
+      } else {
+        core.info("No logs available for this deployment");
       }
     } catch (error) {
       // Log fetching is best-effort, don't fail the action
-      core.debug(
+      core.warning(
         `Failed to fetch logs: ${error instanceof Error ? error.message : error}`,
       );
     }
