@@ -30088,9 +30088,9 @@ class EnforceAuthClient {
      * @param limit - Maximum number of log entries to return (default 100)
      * @returns Array of log entries
      */
-    async getPolicyLogs(entityId, runId, limit = 100) {
+    async getPolicyLogs(entityId, runId, limit = 500) {
         core.info(`Fetching policy logs for entity: ${entityId}, run: ${runId}`);
-        // Use 10 minute lookback for faster CloudWatch queries
+        // Use 10 minute lookback - need higher limit because CloudWatch returns oldest first
         const startTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
         // Fetch all recent logs and filter client-side (CloudWatch eventual consistency
         // makes server-side run_id filter unreliable for just-completed runs)

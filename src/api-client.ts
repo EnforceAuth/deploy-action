@@ -232,11 +232,11 @@ export class EnforceAuthClient {
   async getPolicyLogs(
     entityId: string,
     runId: string,
-    limit = 100,
+    limit = 500,
   ): Promise<LogEntry[]> {
     core.info(`Fetching policy logs for entity: ${entityId}, run: ${runId}`);
 
-    // Use 10 minute lookback for faster CloudWatch queries
+    // Use 10 minute lookback - need higher limit because CloudWatch returns oldest first
     const startTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
     // Fetch all recent logs and filter client-side (CloudWatch eventual consistency
