@@ -30092,10 +30092,14 @@ class EnforceAuthClient {
         core.info(`Fetching policy logs for entity: ${entityId}, run: ${runId}`);
         // Use 10 minute lookback for faster CloudWatch queries
         const startTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-        // DEBUG: Try without run_id filter first to see if ANY logs exist for this entity
+        // Fetch all recent logs and filter client-side (CloudWatch eventual consistency
+        // makes server-side run_id filter unreliable for just-completed runs)
         const response = await this.request("GET", `/v1/entities/${entityId}/policy-logs?limit=${limit}&start_time=${startTime}`);
-        core.info(`DEBUG: Query without run_id got ${response?.logs?.length ?? 0} logs`);
-        return response.logs ?? [];
+        const allLogs = response.logs ?? [];
+        // Filter for logs matching this run_id (check metadata.run_id)
+        const filteredLogs = allLogs.filter((log) => log.metadata?.run_id === runId);
+        core.debug(`Got ${allLogs.length} total logs, ${filteredLogs.length} matching run ${runId}`);
+        return filteredLogs;
     }
 }
 exports.EnforceAuthClient = EnforceAuthClient;
