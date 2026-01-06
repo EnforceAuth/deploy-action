@@ -30091,7 +30091,8 @@ class EnforceAuthClient {
     async getPolicyLogs(entityId, runId, limit = 100) {
         core.info(`Fetching policy logs for entity: ${entityId}, run: ${runId}`);
         const response = await this.request("GET", `/v1/entities/${entityId}/policy-logs?run_id=${runId}&limit=${limit}`);
-        core.debug(`Policy logs response: ${JSON.stringify(response)}`);
+        core.info(`Policy logs response keys: ${Object.keys(response || {}).join(", ")}`);
+        core.info(`Policy logs count: ${response?.logs?.length ?? "undefined"}`);
         return response.logs ?? [];
     }
 }
