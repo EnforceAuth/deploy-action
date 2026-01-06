@@ -30433,15 +30433,15 @@ const core = __importStar(__nccwpck_require__(7484));
 /**
  * RFC 8693 grant type for token exchange
  */
-const TOKEN_EXCHANGE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:token-exchange';
+const TOKEN_EXCHANGE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
 /**
  * RFC 8693 token type for JWT
  */
-const TOKEN_TYPE_JWT = 'urn:ietf:params:oauth:token-type:jwt';
+const TOKEN_TYPE_JWT = "urn:ietf:params:oauth:token-type:jwt";
 /**
  * RFC 8693 token type for access token
  */
-const TOKEN_TYPE_ACCESS_TOKEN = 'urn:ietf:params:oauth:token-type:access_token';
+const TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
 /**
  * Acquires a GitHub OIDC token for the specified audience.
  *
@@ -30456,15 +30456,15 @@ async function getGitHubOIDCToken(audience) {
     try {
         const token = await core.getIDToken(audience);
         if (!token) {
-            throw new Error('GitHub OIDC token is empty');
+            throw new Error("GitHub OIDC token is empty");
         }
-        core.debug('Successfully acquired GitHub OIDC token');
+        core.debug("Successfully acquired GitHub OIDC token");
         return token;
     }
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         // Provide helpful error messages for common issues
-        if (message.includes('Unable to get ACTIONS_ID_TOKEN_REQUEST_URL')) {
+        if (message.includes("Unable to get ACTIONS_ID_TOKEN_REQUEST_URL")) {
             throw new Error('Failed to get GitHub OIDC token. Ensure your workflow has "permissions: id-token: write" configured.');
         }
         throw new Error(`Failed to get GitHub OIDC token: ${message}`);
@@ -30493,10 +30493,10 @@ async function exchangeTokenForEnforceAuth(apiUrl, githubToken, entityId) {
         entity_id: entityId,
     });
     const response = await fetch(tokenEndpoint, {
-        method: 'POST',
+        method: "POST",
         headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            Accept: 'application/json',
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json",
         },
         body: body.toString(),
     });
@@ -30506,19 +30506,23 @@ async function exchangeTokenForEnforceAuth(apiUrl, githubToken, entityId) {
         let errorMessage;
         try {
             const errorResponse = JSON.parse(responseText);
-            errorMessage =
-                errorResponse.error_description ||
-                    errorResponse.error ||
-                    'Unknown error';
-            // Provide helpful messages for common errors
-            if (errorResponse.error === 'invalid_grant') {
-                errorMessage = `Token validation failed: ${errorMessage}. Check that your trust policy is configured correctly.`;
+            // Check if response has expected OAuth error fields
+            if (errorResponse.error || errorResponse.error_description) {
+                errorMessage = errorResponse.error_description || errorResponse.error;
+                // Provide helpful messages for common errors
+                if (errorResponse.error === "invalid_grant") {
+                    errorMessage = `Token validation failed: ${errorMessage}. Check that your trust policy is configured correctly.`;
+                }
+                else if (errorResponse.error === "unauthorized_client") {
+                    errorMessage = `No matching trust policy: ${errorMessage}. Configure a trust policy for your repository and branch.`;
+                }
+                else if (errorResponse.error === "access_denied") {
+                    errorMessage = `Access denied: ${errorMessage}. The entity may not be accessible with the configured trust policy.`;
+                }
             }
-            else if (errorResponse.error === 'unauthorized_client') {
-                errorMessage = `No matching trust policy: ${errorMessage}. Configure a trust policy for your repository and branch.`;
-            }
-            else if (errorResponse.error === 'access_denied') {
-                errorMessage = `Access denied: ${errorMessage}. The entity may not be accessible with the configured trust policy.`;
+            else {
+                // JSON response but not in expected format - show it for debugging
+                errorMessage = `HTTP ${response.status}: ${responseText}`;
             }
         }
         catch {
@@ -30532,10 +30536,10 @@ async function exchangeTokenForEnforceAuth(apiUrl, githubToken, entityId) {
         tokenResponse = JSON.parse(responseText);
     }
     catch {
-        throw new Error('Token exchange returned invalid JSON response');
+        throw new Error("Token exchange returned invalid JSON response");
     }
     if (!tokenResponse.access_token) {
-        throw new Error('Token exchange response missing access_token');
+        throw new Error("Token exchange response missing access_token");
     }
     core.debug(`Token exchange successful, expires in ${tokenResponse.expires_in}s`);
     return {
@@ -30556,14 +30560,14 @@ async function exchangeTokenForEnforceAuth(apiUrl, githubToken, entityId) {
  * @throws Error if authentication fails
  */
 async function authenticate(apiUrl, entityId) {
-    core.info('Authenticating with EnforceAuth using OIDC...');
+    core.info("Authenticating with EnforceAuth using OIDC...");
     // Step 1: Get GitHub OIDC token
     const githubToken = await getGitHubOIDCToken(apiUrl);
     // Step 2: Exchange for EnforceAuth token
     const result = await exchangeTokenForEnforceAuth(apiUrl, githubToken, entityId);
     // Step 3: Mask the token in logs
     core.setSecret(result.accessToken);
-    core.info('Successfully authenticated with EnforceAuth');
+    core.info("Successfully authenticated with EnforceAuth");
     return result.accessToken;
 }
 
