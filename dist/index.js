@@ -30742,6 +30742,8 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
             if (metadata.action === "pipeline_failed" ||
                 metadata.action === "pipeline_error") {
                 const errorMessage = metadata.message || "Deployment failed without error message";
+                const failTime = formatTimestamp(metadata.timestamp || log.timestamp);
+                core.info(`[${failTime}] PHASE  ❌ failed`);
                 core.info("");
                 core.error(`Deployment failed: ${errorMessage}`);
                 return {

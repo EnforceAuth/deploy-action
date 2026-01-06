@@ -170,6 +170,8 @@ export async function pollForCompletion(
       ) {
         const errorMessage =
           metadata.message || "Deployment failed without error message";
+        const failTime = formatTimestamp(metadata.timestamp || log.timestamp);
+        core.info(`[${failTime}] PHASE  ❌ failed`);
         core.info("");
         core.error(`Deployment failed: ${errorMessage}`);
 
