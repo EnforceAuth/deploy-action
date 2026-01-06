@@ -166,14 +166,14 @@ async function run(): Promise<void> {
       const entityId = result.status.entity_id || inputs.entityId;
       let logs = await client.getPolicyLogs(entityId, runId);
 
-      // Retry up to 3 times with 2s delay if no logs found (eventual consistency)
+      // Retry up to 5 times with 3s delay if no logs found (CloudWatch eventual consistency)
       let retries = 0;
-      while (logs.length === 0 && retries < 3) {
+      while (logs.length === 0 && retries < 5) {
         retries++;
         core.info(
-          `Waiting for logs to be available (attempt ${retries + 1}/4)...`,
+          `Waiting for logs to be available (attempt ${retries + 1}/6)...`,
         );
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 3000));
         logs = await client.getPolicyLogs(entityId, runId);
       }
 
