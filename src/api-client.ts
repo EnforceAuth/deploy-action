@@ -134,7 +134,7 @@ export class EnforceAuthClient {
     // Handle 202 Accepted (used by deploy endpoint)
     if (response.status === 202) {
       try {
-        return JSON.parse(responseText) as T;
+        const parsed = JSON.parse(responseText) as ApiSuccessResponse<T>; return parsed.success && "data" in parsed ? parsed.data : parsed as unknown as T;
       } catch {
         throw new Error('API returned invalid JSON response');
       }
