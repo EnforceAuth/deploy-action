@@ -125,9 +125,9 @@ export async function pollForCompletion(
       seenLogIds.add(logId);
 
       // Output log message in real-time
-      const timestamp = log.timestamp.slice(11, 19); // HH:MM:SS
+      const logTime = formatTimestamp(log.timestamp); // HH:MM:SS.mmm
       const level = log.level.toUpperCase().padEnd(5);
-      core.info(`[${timestamp}] ${level} ${log.message}`);
+      core.info(`[${logTime}] ${level} ${log.message}`);
 
       const metadata = log.metadata;
       if (!metadata?.action) {
