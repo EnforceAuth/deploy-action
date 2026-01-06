@@ -30089,7 +30089,7 @@ class EnforceAuthClient {
      * @returns Array of log entries
      */
     async getPolicyLogs(entityId, runId, limit = 500) {
-        core.info(`Fetching policy logs for entity: ${entityId}, run: ${runId}`);
+        core.debug(`Fetching policy logs for entity: ${entityId}, run: ${runId}`);
         // Use 10 minute lookback - need higher limit because CloudWatch returns oldest first
         const startTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
         // Fetch all recent logs and filter client-side (CloudWatch eventual consistency
@@ -30708,6 +30708,10 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
                 continue;
             }
             seenLogIds.add(logId);
+            // Output log message in real-time
+            const timestamp = log.timestamp.slice(11, 19); // HH:MM:SS
+            const level = log.level.toUpperCase().padEnd(5);
+            core.info(`[${timestamp}] ${level} ${log.message}`);
             const metadata = log.metadata;
             if (!metadata?.action) {
                 continue;
@@ -30747,8 +30751,7 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
                 };
             }
         }
-        // Print progress indicator and wait before next poll
-        process.stdout.write(".");
+        // Wait before next poll
         await sleep(config.pollDelayMs);
     }
 }

@@ -254,7 +254,7 @@ export class EnforceAuthClient {
     runId: string,
     limit = 500,
   ): Promise<LogEntry[]> {
-    core.info(`Fetching policy logs for entity: ${entityId}, run: ${runId}`);
+    core.debug(`Fetching policy logs for entity: ${entityId}, run: ${runId}`);
 
     // Use 10 minute lookback - need higher limit because CloudWatch returns oldest first
     const startTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
