@@ -239,15 +239,15 @@ export class EnforceAuthClient {
     // Use 10 minute lookback for faster CloudWatch queries
     const startTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
+    // DEBUG: Try without run_id filter first to see if ANY logs exist for this entity
     const response = await this.request<{ logs: LogEntry[] }>(
       "GET",
-      `/v1/entities/${entityId}/policy-logs?run_id=${runId}&limit=${limit}&start_time=${startTime}`,
+      `/v1/entities/${entityId}/policy-logs?limit=${limit}&start_time=${startTime}`,
     );
 
     core.info(
-      `Policy logs response keys: ${Object.keys(response || {}).join(", ")}`,
+      `DEBUG: Query without run_id got ${response?.logs?.length ?? 0} logs`,
     );
-    core.info(`Policy logs count: ${response?.logs?.length ?? "undefined"}`);
     return response.logs ?? [];
   }
 }
