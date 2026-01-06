@@ -30096,14 +30096,9 @@ class EnforceAuthClient {
         // makes server-side run_id filter unreliable for just-completed runs)
         const response = await this.request("GET", `/v1/entities/${entityId}/policy-logs?limit=${limit}&start_time=${startTime}`);
         const allLogs = response.logs ?? [];
-        // Debug: show first log's metadata structure
-        if (allLogs.length > 0) {
-            core.info(`First log metadata keys: ${Object.keys(allLogs[0].metadata || {}).join(", ")}`);
-            core.info(`First log run_id: ${allLogs[0].metadata?.run_id}`);
-        }
         // Filter for logs matching this run_id (check metadata.run_id)
         const filteredLogs = allLogs.filter((log) => log.metadata?.run_id === runId);
-        core.info(`Got ${allLogs.length} total logs, ${filteredLogs.length} matching run ${runId}`);
+        core.debug(`Got ${allLogs.length} total logs, ${filteredLogs.length} matching run ${runId}`);
         return filteredLogs;
     }
 }
@@ -30378,12 +30373,12 @@ async function run() {
         try {
             const entityId = result.status.entity_id || inputs.entityId;
             let logs = await client.getPolicyLogs(entityId, runId);
-            // Retry up to 5 times with 3s delay if no logs found (CloudWatch eventual consistency)
+            // Retry up to 15 times with 2s delay (~30s total) if no logs found (CloudWatch eventual consistency)
             let retries = 0;
-            while (logs.length === 0 && retries < 5) {
+            while (logs.length === 0 && retries < 15) {
                 retries++;
-                core.info(`Waiting for logs to be available (attempt ${retries + 1}/6)...`);
-                await new Promise((resolve) => setTimeout(resolve, 3000));
+                core.info(`Waiting for logs to be available (attempt ${retries + 1}/16)...`);
+                await new Promise((resolve) => setTimeout(resolve, 2000));
                 logs = await client.getPolicyLogs(entityId, runId);
             }
             if (logs.length > 0) {

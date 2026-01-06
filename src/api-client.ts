@@ -248,20 +248,12 @@ export class EnforceAuthClient {
 
     const allLogs = response.logs ?? [];
 
-    // Debug: show first log's metadata structure
-    if (allLogs.length > 0) {
-      core.info(
-        `First log metadata keys: ${Object.keys(allLogs[0].metadata || {}).join(", ")}`,
-      );
-      core.info(`First log run_id: ${allLogs[0].metadata?.run_id}`);
-    }
-
     // Filter for logs matching this run_id (check metadata.run_id)
     const filteredLogs = allLogs.filter(
       (log) => log.metadata?.run_id === runId,
     );
 
-    core.info(
+    core.debug(
       `Got ${allLogs.length} total logs, ${filteredLogs.length} matching run ${runId}`,
     );
     return filteredLogs;
