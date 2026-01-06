@@ -30361,12 +30361,20 @@ async function run() {
             core.setOutput("bundle-version", result.status.metadata.bundle_version);
         }
         // Fetch and display pipeline logs
+        // CloudWatch Logs has eventual consistency, so we retry a few times
         core.info("");
         core.info("Fetching pipeline logs...");
         try {
-            // Use entity_id from the deployment status (more reliable than input)
             const entityId = result.status.entity_id || inputs.entityId;
-            const logs = await client.getPolicyLogs(entityId, runId);
+            let logs = await client.getPolicyLogs(entityId, runId);
+            // Retry up to 3 times with 2s delay if no logs found (eventual consistency)
+            let retries = 0;
+            while (logs.length === 0 && retries < 3) {
+                retries++;
+                core.info(`Waiting for logs to be available (attempt ${retries + 1}/4)...`);
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+                logs = await client.getPolicyLogs(entityId, runId);
+            }
             if (logs.length > 0) {
                 core.info("");
                 core.info("Pipeline Logs:");
