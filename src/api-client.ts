@@ -27,13 +27,33 @@ export interface DeployResponse {
 }
 
 /**
+ * Log entry metadata for phase transitions and pipeline events
+ */
+export interface LogMetadata {
+  timestamp?: string;
+  service?: string;
+  run_id?: string;
+  tenant_id?: string;
+  entity_id?: string;
+  action?: string;
+  message?: string;
+  duration_ms?: number;
+  details?: {
+    phase?: string;
+    http_status?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+/**
  * Pipeline log entry from API
  */
 export interface LogEntry {
   timestamp: string;
   level: string;
   message: string;
-  metadata?: Record<string, unknown>;
+  metadata?: LogMetadata;
 }
 
 /**
@@ -234,7 +254,7 @@ export class EnforceAuthClient {
     runId: string,
     limit = 500,
   ): Promise<LogEntry[]> {
-    core.info(`Fetching policy logs for entity: ${entityId}, run: ${runId}`);
+    core.debug(`Fetching policy logs for entity: ${entityId}, run: ${runId}`);
 
     // Use 10 minute lookback - need higher limit because CloudWatch returns oldest first
     const startTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();

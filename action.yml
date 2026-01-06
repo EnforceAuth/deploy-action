@@ -1,49 +1,62 @@
-name: 'EnforceAuth Deploy'
-description: 'Deploy OPA bundles via EnforceAuth API using OIDC workload identity'
-author: 'EnforceAuth'
+name: "EnforceAuth Deploy"
+description: "Deploy OPA bundles via EnforceAuth API using OIDC workload identity"
+author: "EnforceAuth"
 
 branding:
-  icon: 'upload-cloud'
-  color: 'blue'
+  icon: "upload-cloud"
+  color: "blue"
 
 inputs:
   entity-id:
-    description: 'Entity ID for authentication and deployment. The CI authenticates as this entity and can deploy policies to it or any of its descendants.'
+    description: "Entity ID for authentication and deployment. The CI authenticates as this entity and can deploy policies to it or any of its descendants."
     required: true
 
   api-url:
-    description: 'EnforceAuth API URL'
+    description: "EnforceAuth API URL"
     required: false
-    default: 'https://api.enforceauth.com'
+    default: "https://api.enforceauth.com"
 
   wait-for-completion:
-    description: 'Wait for deployment to complete'
+    description: "Wait for deployment to complete"
     required: false
-    default: 'true'
+    default: "true"
 
   timeout-minutes:
-    description: 'Timeout when waiting for completion (in minutes)'
+    description: "Timeout when waiting for completion (in minutes)"
     required: false
-    default: '10'
+    default: "10"
 
   dry-run:
-    description: 'Test and build only, skip S3 upload'
+    description: "Test and build only, skip S3 upload"
     required: false
-    default: 'false'
+    default: "false"
+
+  poll-interval-seconds:
+    description: "Interval between status polls (in seconds)"
+    required: false
+    default: "2"
+
+  log-verbosity:
+    description: "Output verbosity: none (silent), quiet (phases only), normal (phases + info logs), verbose (all logs including debug)"
+    required: false
+    default: "normal"
 
 outputs:
   run-id:
-    description: 'Deployment run ID'
+    description: "Deployment run ID"
 
   status:
-    description: 'Final deployment status (success, failed, timeout, pending, in_progress)'
-
-  bundle-version:
-    description: 'Deployed bundle version (on success)'
+    description: "Final deployment status (success, failed, timeout, pending)"
 
   duration-seconds:
-    description: 'Deployment duration in seconds'
+    description: "Deployment duration in seconds"
+
+  bundle-version:
+    description: "Deployed bundle version (on success)"
+
+  deployment-url:
+    description: "S3 URL where the bundle was deployed (on success)"
 
 runs:
-  using: 'node20'
-  main: 'dist/index.js'
+  using: "node20"
+  main: "dist/index.js"

@@ -1,56 +1,55 @@
 /**
- * Deployment Status Polling (EA-132)
+ * Log-Based Deployment Polling
  *
- * Polls the EnforceAuth API for deployment status until completion or timeout.
- * Uses exponential backoff with jitter to avoid overwhelming the API.
+ * Polls the EnforceAuth API policy logs for deployment status until completion or timeout.
+ * Detects phase transitions and completion/failure from log metadata actions.
  */
-import { EnforceAuthClient, DeploymentStatus } from './api-client';
+import { EnforceAuthClient } from "./api-client";
+/**
+ * Log verbosity levels
+ */
+export type LogVerbosity = "none" | "quiet" | "normal" | "verbose";
 /**
  * Polling configuration
  */
-interface PollingConfig {
-    /** Initial delay between polls in milliseconds */
-    initialDelayMs: number;
-    /** Maximum delay between polls in milliseconds */
-    maxDelayMs: number;
-    /** Backoff multiplier */
-    backoffMultiplier: number;
-    /** Maximum jitter percentage (0-1) */
-    jitterPercent: number;
+export interface PollingConfig {
+    /** Delay between polls in milliseconds */
+    pollDelayMs?: number;
+    /** Maximum number of logs to fetch per poll */
+    logLimit?: number;
+    /** Log verbosity level */
+    logVerbosity?: LogVerbosity;
 }
 /**
  * Result of polling for deployment completion
  */
 export interface PollingResult {
-    status: DeploymentStatus;
-    durationSeconds: number;
+    status: "success" | "failed" | "timeout";
+    durationMs?: number;
+    errorMessage?: string;
+    phases: string[];
+    bundleVersion?: string;
+    deploymentUrl?: string;
 }
 /**
- * Polls for deployment completion.
+ * Polls for deployment completion using log-based polling.
  *
- * Uses exponential backoff with jitter to avoid overwhelming the API.
- * Logs status updates and provides progress information.
+ * Fetches policy logs and watches for phase transitions and completion events.
+ * Outputs phase changes in real-time as they are detected.
  *
  * @param client - EnforceAuth API client
+ * @param entityId - Entity ID for log fetching
  * @param runId - Deployment run ID to poll
  * @param timeoutMinutes - Maximum time to wait in minutes
  * @param config - Optional polling configuration
- * @returns Final deployment status and duration
- * @throws Error if polling times out
+ * @returns Final deployment result with status, duration, and phases
  */
-export declare function pollForCompletion(client: EnforceAuthClient, runId: string, timeoutMinutes: number, config?: PollingConfig): Promise<PollingResult>;
+export declare function pollForCompletion(client: EnforceAuthClient, entityId: string, runId: string, timeoutMinutes: number, config?: PollingConfig): Promise<PollingResult>;
 /**
- * Determines if a deployment status represents a successful completion.
- *
- * @param status - Deployment status
- * @returns True if the deployment was successful
+ * Determines if a polling result represents a successful completion.
  */
-export declare function isSuccessful(status: DeploymentStatus): boolean;
+export declare function isSuccessful(result: PollingResult): boolean;
 /**
- * Determines if a deployment status represents a failure.
- *
- * @param status - Deployment status
- * @returns True if the deployment failed
+ * Determines if a polling result represents a failure.
  */
-export declare function isFailed(status: DeploymentStatus): boolean;
-export {};
+export declare function isFailed(result: PollingResult): boolean;
