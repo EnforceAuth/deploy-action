@@ -1,0 +1,36 @@
+{
+  "name": "@enforceauth/deploy-action",
+  "version": "1.0.0",
+  "description": "Deploy OPA bundles via EnforceAuth API using OIDC workload identity",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "ncc build src/main.ts -o dist --source-map --license licenses.txt",
+    "build:watch": "ncc build src/main.ts -o dist --source-map --watch",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "lint": "eslint src/**/*.ts",
+    "test": "bun test",
+    "all": "bun run format && bun run lint && bun run build"
+  },
+  "keywords": [
+    "github-action",
+    "opa",
+    "policy",
+    "deployment",
+    "oidc",
+    "enforceauth"
+  ],
+  "author": "EnforceAuth",
+  "license": "MIT",
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@actions/github": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@vercel/ncc": "^0.38.1",
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.0",
+    "typescript": "^5.3.3"
+  }
+}
