@@ -6,8 +6,8 @@
  * - GET /v1/deployments/:run_id - Get deployment status
  */
 
-import * as core from '@actions/core';
-import * as github from '@actions/github';
+import * as core from "@actions/core";
+import * as github from "@actions/github";
 
 /**
  * Deployment trigger request body
@@ -27,6 +27,16 @@ export interface DeployResponse {
 }
 
 /**
+ * Pipeline log entry from API
+ */
+export interface LogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
  * Deployment status from API
  */
 export interface DeploymentStatus {
@@ -38,7 +48,7 @@ export interface DeploymentStatus {
   branch: string | null;
   commit_sha: string | null;
   commit_message: string | null;
-  status: 'pending' | 'in_progress' | 'success' | 'failed' | 'timeout';
+  status: "pending" | "in_progress" | "success" | "failed" | "timeout";
   current_phase: string | null;
   started_at: string | null;
   completed_at: string | null;
@@ -75,7 +85,7 @@ export class EnforceAuthClient {
 
   constructor(apiUrl: string, accessToken: string) {
     // Normalize API URL (remove trailing slash)
-    this.apiUrl = apiUrl.replace(/\/$/, '');
+    this.apiUrl = apiUrl.replace(/\/$/, "");
     this.accessToken = accessToken;
   }
 
@@ -88,22 +98,22 @@ export class EnforceAuthClient {
     options: {
       body?: Record<string, unknown>;
       idempotencyKey?: string;
-    } = {}
+    } = {},
   ): Promise<T> {
     const url = `${this.apiUrl}${path}`;
     core.debug(`${method} ${url}`);
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.accessToken}`,
-      Accept: 'application/json',
+      Accept: "application/json",
     };
 
     if (options.body) {
-      headers['Content-Type'] = 'application/json';
+      headers["Content-Type"] = "application/json";
     }
 
     if (options.idempotencyKey) {
-      headers['Idempotency-Key'] = options.idempotencyKey;
+      headers["Idempotency-Key"] = options.idempotencyKey;
     }
 
     const response = await fetch(url, {
@@ -115,8 +125,8 @@ export class EnforceAuthClient {
     const responseText = await response.text();
 
     // Check for idempotency replay
-    if (response.headers.get('X-Idempotency-Replay') === 'true') {
-      core.info('Request was replayed from idempotency cache');
+    if (response.headers.get("X-Idempotency-Replay") === "true") {
+      core.info("Request was replayed from idempotency cache");
     }
 
     if (!response.ok) {
@@ -134,9 +144,12 @@ export class EnforceAuthClient {
     // Handle 202 Accepted (used by deploy endpoint)
     if (response.status === 202) {
       try {
-        const parsed = JSON.parse(responseText) as ApiSuccessResponse<T>; return parsed.success && "data" in parsed ? parsed.data : parsed as unknown as T;
+        const parsed = JSON.parse(responseText) as ApiSuccessResponse<T>;
+        return parsed.success && "data" in parsed
+          ? parsed.data
+          : (parsed as unknown as T);
       } catch {
-        throw new Error('API returned invalid JSON response');
+        throw new Error("API returned invalid JSON response");
       }
     }
 
@@ -145,18 +158,18 @@ export class EnforceAuthClient {
       const successResponse = JSON.parse(responseText) as ApiSuccessResponse<T>;
       if (!successResponse.success) {
         throw new Error(
-          `API returned error: ${(successResponse as unknown as ApiError).message}`
+          `API returned error: ${(successResponse as unknown as ApiError).message}`,
         );
       }
       // Handle both wrapped (with data) and unwrapped responses
-      return 'data' in successResponse
+      return "data" in successResponse
         ? successResponse.data
         : (successResponse as T);
     } catch (e) {
-      if (e instanceof Error && e.message.startsWith('API')) {
+      if (e instanceof Error && e.message.startsWith("API")) {
         throw e;
       }
-      throw new Error('API returned invalid JSON response');
+      throw new Error("API returned invalid JSON response");
     }
   }
 
@@ -170,7 +183,7 @@ export class EnforceAuthClient {
    */
   async triggerDeployment(
     entityId: string,
-    idempotencyKey: string
+    idempotencyKey: string,
   ): Promise<string> {
     core.info(`Triggering deployment for entity: ${entityId}`);
 
@@ -179,12 +192,12 @@ export class EnforceAuthClient {
     };
 
     const response = await this.request<DeployResponse>(
-      'POST',
+      "POST",
       `/v1/entities/${entityId}/policies/deploy`,
       {
         body,
         idempotencyKey,
-      }
+      },
     );
 
     core.info(`Deployment triggered with run ID: ${response.run_id}`);
@@ -201,10 +214,33 @@ export class EnforceAuthClient {
     core.debug(`Fetching deployment status for run: ${runId}`);
 
     const response = await this.request<{ deployment: DeploymentStatus }>(
-      'GET',
-      `/v1/deployments/${runId}`
+      "GET",
+      `/v1/deployments/${runId}`,
     );
 
     return response.deployment;
+  }
+
+  /**
+   * Gets the pipeline logs for a deployment run.
+   *
+   * @param entityId - The entity ID
+   * @param runId - The deployment run ID
+   * @param limit - Maximum number of log entries to return (default 100)
+   * @returns Array of log entries
+   */
+  async getPolicyLogs(
+    entityId: string,
+    runId: string,
+    limit = 100,
+  ): Promise<LogEntry[]> {
+    core.debug(`Fetching policy logs for run: ${runId}`);
+
+    const response = await this.request<{ logs: LogEntry[] }>(
+      "GET",
+      `/v1/entities/${entityId}/policy-logs?run_id=${runId}&limit=${limit}`,
+    );
+
+    return response.logs ?? [];
   }
 }

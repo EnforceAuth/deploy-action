@@ -12,12 +12,12 @@
  * 5. Set outputs (run-id, status, bundle-version, duration-seconds)
  */
 
-import * as core from '@actions/core';
-import * as github from '@actions/github';
-import { authenticate } from './oidc';
-import { EnforceAuthClient } from './api-client';
-import { generateIdempotencyKey, getIdempotencyContext } from './idempotency';
-import { pollForCompletion, isSuccessful, isFailed } from './polling';
+import * as core from "@actions/core";
+import * as github from "@actions/github";
+import { authenticate } from "./oidc";
+import { EnforceAuthClient } from "./api-client";
+import { generateIdempotencyKey, getIdempotencyContext } from "./idempotency";
+import { pollForCompletion, isSuccessful, isFailed } from "./polling";
 
 /**
  * Action inputs from action.yml
@@ -34,15 +34,15 @@ interface ActionInputs {
  * Parses and validates action inputs.
  */
 function getInputs(): ActionInputs {
-  const entityId = core.getInput('entity-id', { required: true });
-  const apiUrl = core.getInput('api-url') || 'https://api.enforceauth.com';
-  const waitForCompletion = core.getBooleanInput('wait-for-completion');
-  const timeoutMinutes = parseInt(core.getInput('timeout-minutes') || '10', 10);
-  const dryRun = core.getBooleanInput('dry-run');
+  const entityId = core.getInput("entity-id", { required: true });
+  const apiUrl = core.getInput("api-url") || "https://api.enforceauth.com";
+  const waitForCompletion = core.getBooleanInput("wait-for-completion");
+  const timeoutMinutes = parseInt(core.getInput("timeout-minutes") || "10", 10);
+  const dryRun = core.getBooleanInput("dry-run");
 
   // Validate inputs
   if (timeoutMinutes < 1 || timeoutMinutes > 60) {
-    throw new Error('timeout-minutes must be between 1 and 60');
+    throw new Error("timeout-minutes must be between 1 and 60");
   }
 
   return {
@@ -60,15 +60,15 @@ function getInputs(): ActionInputs {
 function logContext(inputs: ActionInputs): void {
   const context = github.context;
 
-  core.info('EnforceAuth Deploy Action');
-  core.info('=========================');
+  core.info("EnforceAuth Deploy Action");
+  core.info("=========================");
   core.info(`Entity: ${inputs.entityId}`);
   core.info(`API URL: ${inputs.apiUrl}`);
   core.info(`Wait for completion: ${inputs.waitForCompletion}`);
   core.info(`Timeout: ${inputs.timeoutMinutes} minutes`);
   core.info(`Dry run: ${inputs.dryRun}`);
-  core.info('');
-  core.info('GitHub Context:');
+  core.info("");
+  core.info("GitHub Context:");
   core.info(`  Repository: ${context.repo.owner}/${context.repo.repo}`);
   core.info(`  Ref: ${context.ref}`);
   core.info(`  SHA: ${context.sha}`);
@@ -76,7 +76,7 @@ function logContext(inputs: ActionInputs): void {
   core.info(`  Job: ${context.job}`);
   core.info(`  Run ID: ${context.runId}`);
   core.info(`  Run Attempt: ${context.runAttempt}`);
-  core.info('');
+  core.info("");
 }
 
 /**
@@ -106,12 +106,12 @@ async function run(): Promise<void> {
 
     // Handle dry-run mode
     if (inputs.dryRun) {
-      core.info('Dry run mode enabled - skipping actual deployment');
-      core.setOutput('run-id', 'dry-run');
-      core.setOutput('status', 'dry-run');
+      core.info("Dry run mode enabled - skipping actual deployment");
+      core.setOutput("run-id", "dry-run");
+      core.setOutput("status", "dry-run");
       core.setOutput(
-        'duration-seconds',
-        Math.round((Date.now() - startTime) / 1000)
+        "duration-seconds",
+        Math.round((Date.now() - startTime) / 1000),
       );
       return;
     }
@@ -119,21 +119,21 @@ async function run(): Promise<void> {
     // Trigger deployment
     const runId = await client.triggerDeployment(
       inputs.entityId,
-      idempotencyKey
+      idempotencyKey,
     );
 
     // Set run-id output immediately
-    core.setOutput('run-id', runId);
+    core.setOutput("run-id", runId);
 
     // If not waiting for completion, we're done
     if (!inputs.waitForCompletion) {
       core.info(
-        'Deployment triggered successfully (not waiting for completion)'
+        "Deployment triggered successfully (not waiting for completion)",
       );
-      core.setOutput('status', 'pending');
+      core.setOutput("status", "pending");
       core.setOutput(
-        'duration-seconds',
-        Math.round((Date.now() - startTime) / 1000)
+        "duration-seconds",
+        Math.round((Date.now() - startTime) / 1000),
       );
       return;
     }
@@ -142,34 +142,55 @@ async function run(): Promise<void> {
     const result = await pollForCompletion(
       client,
       runId,
-      inputs.timeoutMinutes
+      inputs.timeoutMinutes,
     );
 
     // Set outputs
-    core.setOutput('status', result.status.status);
-    core.setOutput('duration-seconds', result.durationSeconds);
+    core.setOutput("status", result.status.status);
+    core.setOutput("duration-seconds", result.durationSeconds);
 
     // Set bundle-version if available (from metadata on success)
     if (
       result.status.metadata &&
-      typeof result.status.metadata === 'object' &&
-      'bundle_version' in result.status.metadata
+      typeof result.status.metadata === "object" &&
+      "bundle_version" in result.status.metadata
     ) {
-      core.setOutput('bundle-version', result.status.metadata.bundle_version);
+      core.setOutput("bundle-version", result.status.metadata.bundle_version);
+    }
+
+    // Fetch and display pipeline logs
+    try {
+      const logs = await client.getPolicyLogs(inputs.entityId, runId);
+      if (logs.length > 0) {
+        core.info("");
+        core.info("Pipeline Logs:");
+        core.info("--------------");
+        for (const log of logs) {
+          const timestamp = log.timestamp.slice(11, 19); // HH:MM:SS
+          const level = log.level.toUpperCase().padEnd(5);
+          core.info(`[${timestamp}] ${level} ${log.message}`);
+        }
+        core.info("--------------");
+      }
+    } catch (error) {
+      // Log fetching is best-effort, don't fail the action
+      core.debug(
+        `Failed to fetch logs: ${error instanceof Error ? error.message : error}`,
+      );
     }
 
     // Fail the action if deployment failed
     if (isFailed(result.status)) {
       const errorMessage =
         result.status.error_message ||
-        'Deployment failed without error message';
+        "Deployment failed without error message";
       core.setFailed(`Deployment failed: ${errorMessage}`);
       return;
     }
 
     // Log success
     if (isSuccessful(result.status)) {
-      core.info('Deployment completed successfully!');
+      core.info("Deployment completed successfully!");
     }
   } catch (error) {
     // Handle errors
@@ -178,8 +199,8 @@ async function run(): Promise<void> {
 
     // Set duration even on failure
     core.setOutput(
-      'duration-seconds',
-      Math.round((Date.now() - startTime) / 1000)
+      "duration-seconds",
+      Math.round((Date.now() - startTime) / 1000),
     );
   }
 }

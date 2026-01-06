@@ -21,6 +21,15 @@ export interface DeployResponse {
     message: string;
 }
 /**
+ * Pipeline log entry from API
+ */
+export interface LogEntry {
+    timestamp: string;
+    level: string;
+    message: string;
+    metadata?: Record<string, unknown>;
+}
+/**
  * Deployment status from API
  */
 export interface DeploymentStatus {
@@ -32,7 +41,7 @@ export interface DeploymentStatus {
     branch: string | null;
     commit_sha: string | null;
     commit_message: string | null;
-    status: 'pending' | 'in_progress' | 'success' | 'failed' | 'timeout';
+    status: "pending" | "in_progress" | "success" | "failed" | "timeout";
     current_phase: string | null;
     started_at: string | null;
     completed_at: string | null;
@@ -84,4 +93,13 @@ export declare class EnforceAuthClient {
      * @returns The deployment status
      */
     getDeploymentStatus(runId: string): Promise<DeploymentStatus>;
+    /**
+     * Gets the pipeline logs for a deployment run.
+     *
+     * @param entityId - The entity ID
+     * @param runId - The deployment run ID
+     * @param limit - Maximum number of log entries to return (default 100)
+     * @returns Array of log entries
+     */
+    getPolicyLogs(entityId: string, runId: string, limit?: number): Promise<LogEntry[]>;
 }
