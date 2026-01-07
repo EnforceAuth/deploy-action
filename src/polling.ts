@@ -148,13 +148,33 @@ export async function pollForCompletion(
       seenLogIds.add(logId);
 
       // Output log message in real-time based on verbosity
+      const logLevel = log.level.toLowerCase();
       if (showLogs) {
-        const isDebugLog = log.level.toLowerCase() === "debug";
+        const isDebugLog = logLevel === "debug";
         if (!isDebugLog || showDebugLogs) {
           const logTime = formatTimestamp(log.timestamp);
           const level = log.level.toUpperCase().padEnd(5);
           core.info(`[${logTime}] ${level} ${log.message}`);
         }
+      }
+
+      // Fail fast on ERROR level logs
+      if (logLevel === "error") {
+        const errorTime = formatTimestamp(log.timestamp);
+        if (showPhases) {
+          core.info(`[${errorTime}] PHASE  ❌ failed`);
+          core.info("");
+        }
+        const rawError = log.metadata?.error ?? log.metadata?.message;
+        const errorMessage =
+          typeof rawError === "string" ? rawError : log.message;
+        core.error(`Deployment failed: ${errorMessage}`);
+
+        return {
+          status: "failed",
+          errorMessage,
+          phases,
+        };
       }
 
       const metadata = log.metadata;
@@ -173,7 +193,7 @@ export async function pollForCompletion(
 
           if (showPhases) {
             const formattedTime = formatTimestamp(timestamp);
-            core.info(`[${formattedTime}] PHASE  ✅ ${phase}`);
+            core.info(`[${formattedTime}] PHASE  ▶ ${phase}`);
           }
         }
       }
