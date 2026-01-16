@@ -102,6 +102,14 @@ function formatDuration(ms: number): string {
 }
 
 /**
+ * Safely parses a timestamp and returns the time in ms, or undefined if invalid.
+ */
+function parseTimestamp(timestamp: string): number | undefined {
+  const time = new Date(timestamp).getTime();
+  return Number.isNaN(time) ? undefined : time;
+}
+
+/**
  * Calculates phase durations from phase timings.
  * Durations are calculated as the time between consecutive phase starts.
  */
@@ -121,7 +129,9 @@ function calculatePhaseDurations(
 
     // Calculate duration if not already set
     if (!result[phase].durationMs) {
-      const startTime = new Date(timing.startedAt).getTime();
+      const startTime = parseTimestamp(timing.startedAt);
+      if (startTime === undefined) continue;
+
       let endTime: number | undefined;
 
       if (i < phases.length - 1) {
@@ -129,11 +139,11 @@ function calculatePhaseDurations(
         const nextPhase = phases[i + 1];
         const nextTiming = phaseTimings[nextPhase];
         if (nextTiming) {
-          endTime = new Date(nextTiming.startedAt).getTime();
+          endTime = parseTimestamp(nextTiming.startedAt);
         }
       } else if (completedAt) {
         // Last phase - use completion time
-        endTime = new Date(completedAt).getTime();
+        endTime = parseTimestamp(completedAt);
       }
 
       if (endTime !== undefined) {
@@ -290,10 +300,12 @@ export async function pollForCompletion(
           if (showPhases && phases.length > 0) {
             const prevPhase = phases[phases.length - 1];
             const prevTiming = phaseTimings[prevPhase];
-            if (prevTiming) {
-              const durationMs =
-                new Date(timestamp).getTime() -
-                new Date(prevTiming.startedAt).getTime();
+            const endTime = parseTimestamp(timestamp);
+            const startTime = prevTiming
+              ? parseTimestamp(prevTiming.startedAt)
+              : undefined;
+            if (startTime !== undefined && endTime !== undefined) {
+              const durationMs = endTime - startTime;
               core.info(
                 `[${formatTimestamp(timestamp)}] PHASE  ✓ ${prevPhase} (${formatDuration(durationMs)})`,
               );
