@@ -188,6 +188,9 @@ async function run(): Promise<void> {
     if (result.deploymentUrl) {
       core.setOutput("deployment-url", result.deploymentUrl);
     }
+    if (result.phaseTimings && Object.keys(result.phaseTimings).length > 0) {
+      core.setOutput("phase-timings", JSON.stringify(result.phaseTimings));
+    }
 
     // Fail the action if deployment failed
     if (isFailed(result)) {
