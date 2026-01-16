@@ -30732,6 +30732,18 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
+            // Check for permanent authorization errors that won't resolve with retries
+            if (message.includes("insufficient_scope") ||
+                message.includes("Forbidden")) {
+                core.error(`Authorization error: Trust policy missing 'pipeline:read' scope. ` +
+                    `Add it in the EnforceAuth console under Trust Policies.`);
+                return {
+                    status: "failed",
+                    errorMessage: "Missing 'pipeline:read' scope in trust policy. " +
+                        "Add the 'Read' permission in the EnforceAuth console.",
+                    phases,
+                };
+            }
             core.warning(`Failed to fetch logs: ${message}. Retrying...`);
             await sleep(cfg.pollDelayMs);
             continue;
