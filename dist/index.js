@@ -30388,6 +30388,9 @@ async function run() {
         if (result.deploymentUrl) {
             core.setOutput("deployment-url", result.deploymentUrl);
         }
+        if (result.phaseTimings && Object.keys(result.phaseTimings).length > 0) {
+            core.setOutput("phase-timings", JSON.stringify(result.phaseTimings));
+        }
         // Fail the action if deployment failed
         if ((0, polling_1.isFailed)(result)) {
             const errorMessage = result.errorMessage || "Deployment failed without error message";
@@ -30688,6 +30691,65 @@ function formatTimestamp(isoTimestamp) {
     return isoTimestamp.slice(11, 23); // Extract HH:MM:SS.mmm
 }
 /**
+ * Formats a duration in milliseconds for display.
+ */
+function formatDuration(ms) {
+    if (ms < 1000) {
+        return `${ms}ms`;
+    }
+    const seconds = ms / 1000;
+    if (seconds < 60) {
+        return `${seconds.toFixed(1)}s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}m ${remainingSeconds.toFixed(0)}s`;
+}
+/**
+ * Safely parses a timestamp and returns the time in ms, or undefined if invalid.
+ */
+function parseTimestamp(timestamp) {
+    const time = new Date(timestamp).getTime();
+    return Number.isNaN(time) ? undefined : time;
+}
+/**
+ * Calculates phase durations from phase timings.
+ * Durations are calculated as the time between consecutive phase starts.
+ */
+function calculatePhaseDurations(phaseTimings, phases, completedAt) {
+    const result = {};
+    for (let i = 0; i < phases.length; i++) {
+        const phase = phases[i];
+        const timing = phaseTimings[phase];
+        if (!timing)
+            continue;
+        result[phase] = { ...timing };
+        // Calculate duration if not already set
+        if (!result[phase].durationMs) {
+            const startTime = parseTimestamp(timing.startedAt);
+            if (startTime === undefined)
+                continue;
+            let endTime;
+            if (i < phases.length - 1) {
+                // Use next phase start time
+                const nextPhase = phases[i + 1];
+                const nextTiming = phaseTimings[nextPhase];
+                if (nextTiming) {
+                    endTime = parseTimestamp(nextTiming.startedAt);
+                }
+            }
+            else if (completedAt) {
+                // Last phase - use completion time
+                endTime = parseTimestamp(completedAt);
+            }
+            if (endTime !== undefined) {
+                result[phase].durationMs = endTime - startTime;
+            }
+        }
+    }
+    return result;
+}
+/**
  * Polls for deployment completion using log-based polling.
  *
  * Fetches policy logs and watches for phase transitions and completion events.
@@ -30707,6 +30769,7 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
     const seenLogIds = new Set();
     const seenPhases = new Set();
     const phases = [];
+    const phaseTimings = {};
     // Verbosity helpers
     const showPhases = cfg.logVerbosity !== "none";
     const showLogs = cfg.logVerbosity === "normal" || cfg.logVerbosity === "verbose";
@@ -30723,6 +30786,7 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
             return {
                 status: "timeout",
                 phases,
+                phaseTimings: calculatePhaseDurations(phaseTimings, phases),
             };
         }
         // Fetch logs
@@ -30732,6 +30796,19 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
+            // Check for permanent authorization errors that won't resolve with retries
+            if (message.includes("insufficient_scope") ||
+                message.includes("Forbidden")) {
+                core.error(`Authorization error: Trust policy missing 'pipeline:read' scope. ` +
+                    `Add it in the EnforceAuth console under Trust Policies.`);
+                return {
+                    status: "failed",
+                    errorMessage: "Missing 'pipeline:read' scope in trust policy. " +
+                        "Add the 'Read' permission in the EnforceAuth console.",
+                    phases,
+                    phaseTimings: calculatePhaseDurations(phaseTimings, phases),
+                };
+            }
             core.warning(`Failed to fetch logs: ${message}. Retrying...`);
             await sleep(cfg.pollDelayMs);
             continue;
@@ -30757,8 +30834,9 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
             // Fail fast on ERROR level logs
             if (logLevel === "error") {
                 const errorTime = formatTimestamp(log.timestamp);
-                if (showPhases) {
-                    core.info(`[${errorTime}] PHASE  ❌ failed`);
+                if (showPhases && phases.length > 0) {
+                    const failedPhase = phases[phases.length - 1];
+                    core.info(`[${errorTime}] PHASE  ❌ ${failedPhase}`);
                     core.info("");
                 }
                 const rawError = log.metadata?.error ?? log.metadata?.message;
@@ -30768,6 +30846,7 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
                     status: "failed",
                     errorMessage,
                     phases,
+                    phaseTimings: calculatePhaseDurations(phaseTimings, phases),
                 };
             }
             const metadata = log.metadata;
@@ -30779,8 +30858,23 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
                 const phase = metadata.details?.phase;
                 const timestamp = metadata.timestamp || log.timestamp;
                 if (phase && !seenPhases.has(phase)) {
+                    // Mark previous phase as complete
+                    if (showPhases && phases.length > 0) {
+                        const prevPhase = phases[phases.length - 1];
+                        const prevTiming = phaseTimings[prevPhase];
+                        const endTime = parseTimestamp(timestamp);
+                        const startTime = prevTiming
+                            ? parseTimestamp(prevTiming.startedAt)
+                            : undefined;
+                        if (startTime !== undefined && endTime !== undefined) {
+                            const durationMs = endTime - startTime;
+                            core.info(`[${formatTimestamp(timestamp)}] PHASE  ✓ ${prevPhase} (${formatDuration(durationMs)})`);
+                        }
+                    }
                     seenPhases.add(phase);
                     phases.push(phase);
+                    // Record phase start time
+                    phaseTimings[phase] = { startedAt: timestamp };
                     if (showPhases) {
                         const formattedTime = formatTimestamp(timestamp);
                         core.info(`[${formattedTime}] PHASE  ▶ ${phase}`);
@@ -30792,6 +30886,17 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
                 const durationMs = metadata.duration_ms;
                 const bundleVersion = metadata.details?.bundle_version;
                 const deploymentUrl = metadata.details?.deployment_url;
+                const completedAt = metadata.timestamp || log.timestamp;
+                // Calculate final phase durations
+                const finalTimings = calculatePhaseDurations(phaseTimings, phases, completedAt);
+                // Mark final phase as complete
+                if (showPhases && phases.length > 0) {
+                    const lastPhase = phases[phases.length - 1];
+                    const lastTiming = finalTimings[lastPhase];
+                    if (lastTiming?.durationMs !== undefined) {
+                        core.info(`[${formatTimestamp(completedAt)}] PHASE  ✓ ${lastPhase} (${formatDuration(lastTiming.durationMs)})`);
+                    }
+                }
                 core.info("");
                 core.info(`Deployment completed successfully${durationMs ? ` in ${Math.round(durationMs / 1000)}s` : ""}`);
                 if (bundleVersion) {
@@ -30800,10 +30905,22 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
                 if (deploymentUrl) {
                     core.info(`Deployment URL: ${deploymentUrl}`);
                 }
+                // Log phase durations if we have timing data
+                if (showPhases && Object.keys(finalTimings).length > 0) {
+                    core.info("");
+                    core.info("Phase durations:");
+                    for (const phase of phases) {
+                        const timing = finalTimings[phase];
+                        if (timing?.durationMs !== undefined) {
+                            core.info(`  ${phase}: ${formatDuration(timing.durationMs)}`);
+                        }
+                    }
+                }
                 return {
                     status: "success",
                     durationMs,
                     phases,
+                    phaseTimings: finalTimings,
                     bundleVersion,
                     deploymentUrl,
                 };
@@ -30812,9 +30929,11 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
             if (metadata.action === "pipeline_failed" ||
                 metadata.action === "pipeline_error") {
                 const errorMessage = metadata.message || "Deployment failed without error message";
-                if (showPhases) {
-                    const failTime = formatTimestamp(metadata.timestamp || log.timestamp);
-                    core.info(`[${failTime}] PHASE  ❌ failed`);
+                const failedAt = metadata.timestamp || log.timestamp;
+                if (showPhases && phases.length > 0) {
+                    const failedPhase = phases[phases.length - 1];
+                    const failTime = formatTimestamp(failedAt);
+                    core.info(`[${failTime}] PHASE  ❌ ${failedPhase}`);
                     core.info("");
                 }
                 core.error(`Deployment failed: ${errorMessage}`);
@@ -30822,6 +30941,7 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
                     status: "failed",
                     errorMessage,
                     phases,
+                    phaseTimings: calculatePhaseDurations(phaseTimings, phases, failedAt),
                 };
             }
         }

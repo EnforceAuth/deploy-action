@@ -57,6 +57,9 @@ outputs:
   deployment-url:
     description: "S3 URL where the bundle was deployed (on success)"
 
+  phase-timings:
+    description: "JSON object with phase timing data: {phase: {startedAt, durationMs}}"
+
 runs:
   using: "node20"
   main: "dist/index.js"

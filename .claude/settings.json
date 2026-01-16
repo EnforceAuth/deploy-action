@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": ["Bash(bun:*)", "Bash(gh:*)"],
+    "deny": [],
+    "ask": []
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|mcp__acp__Edit|mcp__acp__Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/build-on-change.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

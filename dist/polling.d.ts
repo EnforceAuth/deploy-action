@@ -21,6 +21,17 @@ export interface PollingConfig {
     logVerbosity?: LogVerbosity;
 }
 /**
+ * Timing information for a single phase
+ */
+export interface PhaseTiming {
+    startedAt: string;
+    durationMs?: number;
+}
+/**
+ * Map of phase names to timing information
+ */
+export type PhaseTimings = Record<string, PhaseTiming>;
+/**
  * Result of polling for deployment completion
  */
 export interface PollingResult {
@@ -28,6 +39,7 @@ export interface PollingResult {
     durationMs?: number;
     errorMessage?: string;
     phases: string[];
+    phaseTimings?: PhaseTimings;
     bundleVersion?: string;
     deploymentUrl?: string;
 }
