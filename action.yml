@@ -26,6 +26,10 @@ inputs:
     required: false
     default: "10"
 
+  environment:
+    description: "Target environment name (e.g., 'production', 'staging'). Must match an environment defined in the entity's environment_config. If omitted, the default environment is used (or no environment if environment_config is not configured)."
+    required: false
+
   dry-run:
     description: "Test and build only, skip S3 upload"
     required: false
