@@ -25,6 +25,7 @@ import { pollForCompletion, isFailed, LogVerbosity } from "./polling";
 interface ActionInputs {
   entityId: string;
   apiUrl: string;
+  environment: string | undefined;
   waitForCompletion: boolean;
   timeoutMinutes: number;
   dryRun: boolean;
@@ -38,6 +39,7 @@ interface ActionInputs {
 function getInputs(): ActionInputs {
   const entityId = core.getInput("entity-id", { required: true });
   const apiUrl = core.getInput("api-url") || "https://api.enforceauth.com";
+  const environmentInput = core.getInput("environment") || undefined;
   const waitForCompletion = core.getBooleanInput("wait-for-completion");
   const timeoutMinutes = parseInt(core.getInput("timeout-minutes") || "10", 10);
   const dryRun = core.getBooleanInput("dry-run");
@@ -71,6 +73,7 @@ function getInputs(): ActionInputs {
   return {
     entityId,
     apiUrl,
+    environment: environmentInput,
     waitForCompletion,
     timeoutMinutes,
     dryRun,
@@ -92,6 +95,9 @@ function logContext(inputs: ActionInputs): void {
   core.info(`Wait for completion: ${inputs.waitForCompletion}`);
   core.info(`Timeout: ${inputs.timeoutMinutes} minutes`);
   core.info(`Dry run: ${inputs.dryRun}`);
+  if (inputs.environment) {
+    core.info(`Environment: ${inputs.environment}`);
+  }
   core.info("");
   core.info("GitHub Context:");
   core.info(`  Repository: ${context.repo.owner}/${context.repo.repo}`);
@@ -145,6 +151,7 @@ async function run(): Promise<void> {
     const runId = await client.triggerDeployment(
       inputs.entityId,
       idempotencyKey,
+      { environment: inputs.environment },
     );
 
     // Set run-id output immediately

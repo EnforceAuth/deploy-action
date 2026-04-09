@@ -204,11 +204,13 @@ export class EnforceAuthClient {
   async triggerDeployment(
     entityId: string,
     idempotencyKey: string,
+    options?: { environment?: string },
   ): Promise<string> {
     core.info(`Triggering deployment for entity: ${entityId}`);
 
     const body: DeployRequest = {
       commit_sha: github.context.sha,
+      ...(options?.environment && { environment: options.environment }),
     };
 
     const response = await this.request<DeployResponse>(

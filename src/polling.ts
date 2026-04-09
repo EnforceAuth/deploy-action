@@ -307,7 +307,7 @@ export async function pollForCompletion(
             if (startTime !== undefined && endTime !== undefined) {
               const durationMs = endTime - startTime;
               core.info(
-                `[${formatTimestamp(timestamp)}] PHASE  ✓ ${prevPhase} (${formatDuration(durationMs)})`,
+                `[${formatTimestamp(timestamp)}] PHASE  ✅ ${prevPhase} (${formatDuration(durationMs)})`,
               );
             }
           }
@@ -349,7 +349,7 @@ export async function pollForCompletion(
           const lastTiming = finalTimings[lastPhase];
           if (lastTiming?.durationMs !== undefined) {
             core.info(
-              `[${formatTimestamp(completedAt)}] PHASE  ✓ ${lastPhase} (${formatDuration(lastTiming.durationMs)})`,
+              `[${formatTimestamp(completedAt)}] PHASE  ✅ ${lastPhase} (${formatDuration(lastTiming.durationMs)})`,
             );
           }
         }
