@@ -52,6 +52,7 @@ jobs:
   with:
     entity-id: ${{ vars.ENFORCEAUTH_ENTITY_ID }}
     api-url: 'https://api.enforceauth.com'  # Optional, this is the default
+    environment: 'production'                # Optional, target a specific environment
     wait-for-completion: 'true'              # Optional, default: true
     timeout-minutes: '10'                    # Optional, default: 10
     dry-run: 'false'                         # Optional, default: false
@@ -76,6 +77,16 @@ If you don't want to wait for the deployment to complete:
     wait-for-completion: 'false'
 ```
 
+### Deploy to a Specific Environment
+
+```yaml
+- name: Deploy to Production
+  uses: enforceauth/deploy-action@v1
+  with:
+    entity-id: ${{ vars.ENFORCEAUTH_ENTITY_ID }}
+    environment: 'production'
+```
+
 ### Dry Run Mode
 
 Test the action without actually deploying:
@@ -96,6 +107,7 @@ Test the action without actually deploying:
 | `api-url` | EnforceAuth API URL | No | `https://api.enforceauth.com` |
 | `wait-for-completion` | Wait for deployment to complete | No | `true` |
 | `timeout-minutes` | Timeout when waiting for completion (1-60) | No | `10` |
+| `environment` | Target environment name (e.g., `production`, `staging`). Must match an environment in the entity's environment_config. | No | - |
 | `dry-run` | Test mode - skip actual deployment | No | `false` |
 
 ## Outputs
