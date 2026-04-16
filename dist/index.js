@@ -30057,10 +30057,11 @@ class EnforceAuthClient {
      * @param options - Deployment options
      * @returns The deployment run ID
      */
-    async triggerDeployment(entityId, idempotencyKey) {
+    async triggerDeployment(entityId, idempotencyKey, options) {
         core.info(`Triggering deployment for entity: ${entityId}`);
         const body = {
             commit_sha: github.context.sha,
+            ...(options?.environment && { environment: options.environment }),
         };
         const response = await this.request("POST", `/v1/entities/${entityId}/policies/deploy`, {
             body,
@@ -30279,6 +30280,7 @@ const polling_1 = __nccwpck_require__(2692);
 function getInputs() {
     const entityId = core.getInput("entity-id", { required: true });
     const apiUrl = core.getInput("api-url") || "https://api.enforceauth.com";
+    const environmentInput = core.getInput("environment") || undefined;
     const waitForCompletion = core.getBooleanInput("wait-for-completion");
     const timeoutMinutes = parseInt(core.getInput("timeout-minutes") || "10", 10);
     const dryRun = core.getBooleanInput("dry-run");
@@ -30303,6 +30305,7 @@ function getInputs() {
     return {
         entityId,
         apiUrl,
+        environment: environmentInput,
         waitForCompletion,
         timeoutMinutes,
         dryRun,
@@ -30322,6 +30325,9 @@ function logContext(inputs) {
     core.info(`Wait for completion: ${inputs.waitForCompletion}`);
     core.info(`Timeout: ${inputs.timeoutMinutes} minutes`);
     core.info(`Dry run: ${inputs.dryRun}`);
+    if (inputs.environment) {
+        core.info(`Environment: ${inputs.environment}`);
+    }
     core.info("");
     core.info("GitHub Context:");
     core.info(`  Repository: ${context.repo.owner}/${context.repo.repo}`);
@@ -30361,7 +30367,7 @@ async function run() {
             return;
         }
         // Trigger deployment
-        const runId = await client.triggerDeployment(inputs.entityId, idempotencyKey);
+        const runId = await client.triggerDeployment(inputs.entityId, idempotencyKey, { environment: inputs.environment });
         // Set run-id output immediately
         core.setOutput("run-id", runId);
         // If not waiting for completion, we're done
@@ -30868,7 +30874,7 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
                             : undefined;
                         if (startTime !== undefined && endTime !== undefined) {
                             const durationMs = endTime - startTime;
-                            core.info(`[${formatTimestamp(timestamp)}] PHASE  ✓ ${prevPhase} (${formatDuration(durationMs)})`);
+                            core.info(`[${formatTimestamp(timestamp)}] PHASE  ✅ ${prevPhase} (${formatDuration(durationMs)})`);
                         }
                     }
                     seenPhases.add(phase);
@@ -30894,7 +30900,7 @@ async function pollForCompletion(client, entityId, runId, timeoutMinutes, config
                     const lastPhase = phases[phases.length - 1];
                     const lastTiming = finalTimings[lastPhase];
                     if (lastTiming?.durationMs !== undefined) {
-                        core.info(`[${formatTimestamp(completedAt)}] PHASE  ✓ ${lastPhase} (${formatDuration(lastTiming.durationMs)})`);
+                        core.info(`[${formatTimestamp(completedAt)}] PHASE  ✅ ${lastPhase} (${formatDuration(lastTiming.durationMs)})`);
                     }
                 }
                 core.info("");

@@ -104,7 +104,9 @@ export declare class EnforceAuthClient {
      * @param options - Deployment options
      * @returns The deployment run ID
      */
-    triggerDeployment(entityId: string, idempotencyKey: string): Promise<string>;
+    triggerDeployment(entityId: string, idempotencyKey: string, options?: {
+        environment?: string;
+    }): Promise<string>;
     /**
      * Gets the status of a deployment run.
      *
